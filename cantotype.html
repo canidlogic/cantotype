@@ -149,6 +149,23 @@ body {
 (function() {
 
   /*
+   * Local data
+   * ==========
+   */
+  
+  /*
+   * Codepoint to readings table.
+   *
+   * The property keys are decimal representations of the codepoints.
+   *
+   * The property values are arrays that store all Jyutping reads of
+   * that codepoint.
+   *
+   * This table is generated during handleLoad() by loadReadings().
+   */
+  var m_readings;
+
+  /*
    * Local functions
    * ===============
    */
@@ -181,6 +198,42 @@ body {
     
     // Throw exception
     throw ("ctt_html:" + func_name + ":" + String(loc));
+  }
+
+  /*
+   * Load m_readings using the canto_table global.
+   */
+  function loadReadings() {
+    
+    var r, i;
+    var cpa, cpv;
+    
+    // Set the readings variable to an empty object
+    m_readings = {};
+    
+    // Go through all readings in the canto_table
+    for(r in canto_table) {
+      
+      // Get all codepoints for this reading
+      cpa = canto_table[r];
+      
+      // Add all codepoint-to-reading mappings
+      for(i = 0; i < cpa.length; i++) {
+        // Get codepoint value
+        cpv = cpa[i];
+        
+        // Convert to integer string
+        cpv = cpv.toString(10);
+        
+        // If not yet defined in readings, add empty array
+        if (!(cpv in m_readings)) {
+          m_readings[cpv] = [];
+        }
+        
+        // Add this reading to the codepoint
+        m_readings[cpv].push(r);
+      }
+    }
   }
 
   /*
@@ -253,7 +306,7 @@ body {
     
     var func_name = "handleQuery";
     var e, eResult;
-    var q, i, j, str, ra, m, cpa;
+    var q, i, j, k, str, ra, m, cpa, cps, rra;
     
     // Get the result DIV
     eResult = document.getElementById("divResults");
@@ -290,10 +343,35 @@ body {
       
       // Add each result
       for(i = 0; i < cpa.length; i++) {
+        // Add character and codepoint
         str = str + "<tr><td class=\"han\">";
         str = str + String.fromCharCode(cpa[i]);
         str = str + "</td><td class=\"cpt\">";
         str = str + (cpa[i]).toString(16).toLowerCase();
+        
+        // Add all readings
+        cps = (cpa[i]).toString(10);
+        str = str + "<td class=\"cpr\">";
+        if (cps in m_readings) {
+          rra = m_readings[cps];
+          if (rra.length > 0) {
+            for(k = 0; k < rra.length; k++) {
+              if (k > 0) {
+                str = str + ", ";
+              }
+              str = str + rra[k];
+            }
+            
+          } else {
+            str = str + "&nbsp;"
+          }
+          
+        } else {
+          str = str + "&nbsp";
+        }
+        str = str + "</td>";
+        
+        // Finish row
         str = str + "</td></tr>";
       }
       
@@ -318,6 +396,9 @@ body {
     
     var func_name = "handleLoad";
     var e;
+    
+    // Load the readings table
+    loadReadings();
     
     // Hide the splash-screen DIV and show the main DIV
     e = document.getElementById("divSplash");
