@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Cantotype</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"/>
+    
+    <!-- Google Fonts loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com"/> 
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/> 
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK&family=Source+Code+Pro&family=Source+Sans+3&display=swap" rel="stylesheet"/>
+    
+    <!-- Main style sheet -->
+    <style>
+      
+body {
+  padding-left: 0.25em;
+  padding-right: 0.25em;
+  margin-bottom: 3.5em;
+  background-color: WhiteSmoke;
+  color: black;
+  font-family: 'Source Sans 3', sans-serif;
+}
+
+:link {
+  text-decoration: none;
+  color: blue
+}
+
+:visited {
+  text-decoration: none;
+  color: blue
+}
+
+#divSplash {
+  font-style: italic;
+}
+
+#divMain {
+  display: none;
+}
+
+#tblCtl td {
+  padding-left: 0.25em;
+  padding-right: 0.25em;
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+}
+
+#txtInput {
+  font-family: 'Source Code Pro', monospace;
+  max-width: 10em;
+}
+
+#divYaleNote {
+  font-size: smaller;
+}
+
+.rtable td {
+  padding-left: 0.25em;
+  padding-right: 0.25em;
+}
+
+.han {
+  font-family: 'Noto Sans HK', sans-serif;
+  font-size: 400%;
+}
+
+.cpt {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 150%;
+}
+
+    </style>
+    
+    <!-- If JavaScript disabled, do not show the splash screen -->
+    <noscript>
+      <style>
+
+#divSplash {
+  display: None;
+}
+
+      </style>
+    </noscript>
+    
+    <!-- Load HKSCS table into canto_table -->
+    <script src="cantotype_table.js"></script>
+    
+    <!-- Embedded script is for presentation tier functionality -->
+    <script>
+
+// Wrap everything in an anonymous function that we immediately invoke
+// after it is declared -- this prevents anything from being implicitly
+// added to global scope
+(function() {
+
+  /*
+   * Local functions
+   * ===============
+   */
+  
+  /*
+   * Report an error to console and throw an exception for a fault
+   * occurring within this module.
+   *
+   * Parameters:
+   *
+   *   func_name : string - the name of the function in this module
+   *
+   *   loc : number(int) - the location within the function
+   */
+  function fault(func_name, loc) {
+    
+    // If parameters not valid, set to unknown:0
+    if ((typeof func_name !== "string") || (typeof loc !== "number")) {
+      func_name = "unknown";
+      loc = 0;
+    }
+    loc = Math.floor(loc);
+    if (!isFinite(loc)) {
+      loc = 0;
+    }
+    
+    // Report error to console
+    console.log("Fault at " + func_name + ":" + String(loc) +
+                  " in ctt_html");
+    
+    // Throw exception
+    throw ("ctt_html:" + func_name + ":" + String(loc));
+  }
+
+  /*
+   * Public functions
+   * ================
+   */
+
+  /*
+   * Find the element with the given ID and set its display property to
+   * "none" to hide it.
+   *
+   * Parameters:
+   *
+   *   elid : string - the ID of the element to hide
+   */
+  function dismiss(elid) {
+    
+    var func_name = "dismiss";
+    var e;
+    
+    // Check parameter
+    if (typeof elid !== "string") {
+      fault(func_name, 100);
+    }
+    
+    // Get the element
+    e = document.getElementById(elid);
+    if (e == null) {
+      fault(func_name, 200);
+    }
+    
+    // Hide the element
+    e.style.display = "none";
+  }
+
+  /*
+   * Event handler for when the query button is clicked.
+   */
+  function handleQuery() {
+    
+    var func_name = "handleQuery";
+    var e, eResult;
+    var q, i, j, str, ra, m, cpa;
+    
+    // Get the result DIV
+    eResult = document.getElementById("divResults");
+    if (eResult == null) {
+      fault(func_name, 100);
+    }
+    
+    // Clear results
+    eResult.innerHTML = "&nbsp;";
+    
+    // Get the query word
+    e = document.getElementById("txtInput");
+    if (e == null) {
+      fault(func_name, 110);
+    }
+    q = e.value;
+    
+    // Trim value of whitespace, convert to lowercase, and normalize
+    q = q.trim().toLowerCase().normalize("NFC");
+    
+    // @@TODO: Yale conversion if selected
+    
+    // Go to the canto_table and look for all matching codepoints
+    cpa = [];
+    if (q in canto_table) {
+      cpa = canto_table[q];
+    }
+    
+    // Build result string
+    str = "";
+    if (cpa.length > 0) {
+      // Matches found, so begin results table
+      str = "<table class=\"rtable\">";
+      
+      // Add each result
+      for(i = 0; i < cpa.length; i++) {
+        str = str + "<tr><td class=\"han\">";
+        str = str + String.fromCharCode(cpa[i]);
+        str = str + "</td><td class=\"cpt\">";
+        str = str + (cpa[i]).toString(16).toLowerCase();
+        str = str + "</td></tr>";
+      }
+      
+      // End results table
+      str = str + "</table>";
+
+    } else {
+      // No matches
+      str = "<p>No matches found!</p>";
+    }
+
+    // Update results
+    eResult.innerHTML = str;
+  }
+
+  /*
+   * Event handler for when the document is fully loaded.
+   *
+   * This should be registered later.
+   */
+  function handleLoad() {
+    
+    var func_name = "handleLoad";
+    var e;
+    
+    // Hide the splash-screen DIV and show the main DIV
+    e = document.getElementById("divSplash");
+    if (e == null) {
+      fault(func_name, 900);
+    }
+    e.style.display = "none";
+    
+    e = document.getElementById("divMain");
+    if (e == null) {
+      fault(func_name, 910);
+    }
+    e.style.display = "block";
+  }
+
+  /*
+   * Export declarations
+   * ===================
+   * 
+   * All exports are declared within a global "ctt_html" object.
+   */
+  window.ctt_html = {
+    "dismiss": dismiss,
+    "handleQuery": handleQuery,
+    "handleLoad": handleLoad
+  };
+
+}());
+
+// Register the document loading event
+window.onload = ctt_html.handleLoad;
+
+    </script>
+  </head>
+  <body>
+  
+    <!-- Screen displayed when JavaScript is disabled -->
+    <noscript>
+      <h1>Cantotype</h1>
+      <p>This web app requires JavaScript to function!</p>
+    </noscript>
+    
+    <!-- Initial splash screen, except when JavaScript disabled -->
+    <div id="divSplash">
+      Loading web app...
+    </div>
+    
+    <!-- The main program window, shown after page is loaded -->
+    <div id="divMain">
+      <table id="tblCtl">
+        <tr>
+          <td>
+            <input id="txtInput" type="text"/>
+          </td>
+          <td>
+            <select id="selRoman">
+              <option value="jyutping" selected>Jyutping</option>
+              <option value="yale">Yale</option>
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td id="tdQuery">
+            <input type="button" value="Query"
+              onclick="ctt_html.handleQuery()"/>
+          </td>
+          <td>&nbsp;</td>
+        </tr>
+      </table>
+      <p id="divYaleNote">
+        <u>Tip</u>: In Yale, you can use circumflex in place of
+        macron.<br/>
+        <a href="javascript:void ctt_html.dismiss('divYaleNote');">
+          Dismiss
+        </a>
+      </p>
+      <hr/>
+      <div id="divResults">
+        &nbsp;
+      </div>
+    </div>
+  </body>
+</html>
