@@ -57,8 +57,48 @@ body {
   max-width: 10em;
 }
 
-#divYaleNote {
-  font-size: smaller;
+#divInputNotes {
+  background-color: white;
+  max-width: 35em;
+  padding: 0.5em;
+  border: thin solid;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+#tblApos {
+  border-collapse: collapse;
+}
+
+#tblApos th {
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+  padding-left: 1em;
+  padding-right: 1em;
+  border: thin solid;
+  text-align: center;
+  font-weight: bold;
+}
+
+#tblApos td {
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+  padding-left: 1em;
+  padding-right: 1em;
+  border: thin solid;
+}
+
+.tdAposCode {
+  text-align: center;
+  font-family: monospace;
+}
+
+.tdAposResult {
+  text-align: center;
+}
+
+.tdAposMeaning {
+  text-align: left;
 }
 
 .rtable td {
@@ -74,6 +114,10 @@ body {
 .cpt {
   font-family: monospace;
   font-size: 150%;
+}
+
+.tt {
+  font-family: monospace;
 }
 
     </style>
@@ -139,6 +183,36 @@ body {
    * Public functions
    * ================
    */
+
+  /*
+   * Find the element with the given ID and set its display property to
+   * "block" to show it.
+   *
+   * Assumes that the element is properly displayed with "block".
+   *
+   * Parameters:
+   *
+   *   elid : string - the ID of the element to show
+   */
+  function appear(elid) {
+    
+    var func_name = "appear";
+    var e;
+    
+    // Check parameter
+    if (typeof elid !== "string") {
+      fault(func_name, 100);
+    }
+    
+    // Get the element
+    e = document.getElementById(elid);
+    if (e == null) {
+      fault(func_name, 200);
+    }
+    
+    // Show the element
+    e.style.display = "block";
+  }
 
   /*
    * Find the element with the given ID and set its display property to
@@ -262,6 +336,7 @@ body {
    * All exports are declared within a global "ctt_html" object.
    */
   window.ctt_html = {
+    "appear": appear,
     "dismiss": dismiss,
     "handleQuery": handleQuery,
     "handleLoad": handleLoad
@@ -294,28 +369,81 @@ window.onload = ctt_html.handleLoad;
           <td>
             <input id="txtInput" type="text"/>
           </td>
-          <td>
-            <select id="selRoman">
-              <option value="jyutping" selected>Jyutping</option>
-              <option value="yale">Yale</option>
-            </select>
-          </td>
         </tr>
         <tr>
           <td id="tdQuery">
             <input type="button" value="Query"
               onclick="ctt_html.handleQuery()"/>
           </td>
-          <td>&nbsp;</td>
         </tr>
       </table>
-      <p id="divYaleNote">
-        <u>Tip</u>: In Yale, you can use circumflex in place of
-        macron.<br/>
-        <a href="javascript:void ctt_html.dismiss('divYaleNote');">
-          Dismiss
-        </a>
-      </p>
+      <div id="divInputNotes">
+        <div>
+          <u>Input format</u><br/>
+          <a href="javascript:void ctt_html.appear('divNotes');">
+            [&nbsp;Show&nbsp;]
+          </a>
+          <a href="javascript:void ctt_html.dismiss('divNotes');">
+            [&nbsp;Hide&nbsp;]
+          </a>
+        </div>
+        
+        <div id="divNotes">
+          
+<!-- BEGIN Input notes documentation -->
+<p>(1) Enter <span class="tt">u72d7</span> or <span class="tt">U72D7</span>
+to look up <b>Unicode codepoint</b> U+72D7.  At least four base-16
+digits must be provided.</p>
+
+<p>(2) Enter <span class="tt">gau2</span> to look up all characters using
+that <b>Jyutping</b>.</p>
+
+<p>(3) If the input is not in one of those two formats, then it is assumed
+to be in <b>Yale</b>.</p>
+
+<p><i>Yale diacritics:</i></p>
+
+<p>(A) Yale uses grave accent (&agrave;), acute accent (&aacute;) and
+macron (&amacr;).</p>
+
+<p>(B) The first vowel that is not Y must carry the diacritic.</p>
+
+<p>(C) For syllabic M and NG, the M and G letters carry the
+diacritic.</p>
+
+<p>(D) You may substitute circumflex (&acirc;) for macron (&amacr;).</p>
+
+<p>(E) You may also use apostrophes as escape codes:</p>
+
+<table id="tblApos">
+  <tr>
+    <th>Code</th>
+    <th>Result</th>
+    <th>Meaning</th>
+  </tr>
+  <tr>
+    <td class="tdAposCode">'a</td>
+    <td class="tdAposResult">&agrave;</td>
+    <td class="tdAposMeaning">Grave accent</td>
+  </tr>
+  <tr>
+    <td class="tdAposCode">a'</td>
+    <td class="tdAposResult">&aacute;</td>
+    <td class="tdAposMeaning">Acute accent</td>
+  </tr>
+  <tr>
+    <td class="tdAposCode">'a'</td>
+    <td class="tdAposResult">&amacr;</td>
+    <td class="tdAposMeaning">Macron</td>
+  </tr>
+</table>
+
+<p>(F) Apostrophe codes are especially useful for syllabic M and NG,
+which use obscure letter+diacritic combinations.</p>
+            
+<!-- END Input notes documentation -->
+        </div>
+      </div>
       <hr/>
       <div id="divResults">
         &nbsp;
