@@ -8,21 +8,23 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"/>
     
-    <!-- Google Fonts loading -->
-    <link rel="preconnect" href="https://fonts.googleapis.com"/> 
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/> 
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK&family=Source+Code+Pro&family=Source+Sans+3&display=swap" rel="stylesheet"/>
-    
     <!-- Main style sheet -->
     <style>
-      
+
+@font-face {
+  font-family: 'HKCS';
+  font-style: normal;
+  font-weight: normal;
+  src: url('hkcs-traditional-bmp-canonicalonly.woff');
+}
+
 body {
   padding-left: 0.25em;
   padding-right: 0.25em;
   margin-bottom: 3.5em;
   background-color: WhiteSmoke;
   color: black;
-  font-family: 'Source Sans 3', sans-serif;
+  font-family: sans-serif;
 }
 
 :link {
@@ -51,7 +53,7 @@ body {
 }
 
 #txtInput {
-  font-family: 'Source Code Pro', monospace;
+  font-family: monospace;
   max-width: 10em;
 }
 
@@ -65,12 +67,12 @@ body {
 }
 
 .han {
-  font-family: 'Noto Sans HK', sans-serif;
+  font-family: 'HKCS', sans-serif;
   font-size: 400%;
 }
 
 .cpt {
-  font-family: 'Source Code Pro', monospace;
+  font-family: monospace;
   font-size: 150%;
 }
 
