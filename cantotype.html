@@ -111,6 +111,10 @@ body {
   font-size: 400%;
 }
 
+.hanquote {
+  font-family: 'HKCS', sans-serif;
+}
+
 .cpt {
   font-family: monospace;
   font-size: 150%;
@@ -391,15 +395,18 @@ window.onload = ctt_html.handleLoad;
         <div id="divNotes">
           
 <!-- BEGIN Input notes documentation -->
-<p>(1) Enter <span class="tt">u72d7</span> or <span class="tt">U72D7</span>
-to look up <b>Unicode codepoint</b> U+72D7.  At least four base-16
-digits must be provided.</p>
+<p>(1) Enter <span class="hanquote">&#x72d7;</span> to look up that
+<b>character</b>.  You may only enter one character.</p>
 
-<p>(2) Enter <span class="tt">gau2</span> to look up all characters using
-that <b>Jyutping</b>.</p>
+<p>(2) Enter <span class="tt">u72d7</span> or
+<span class="tt">U72D7</span> to look up <b>Unicode codepoint</b>
+U+72D7.  At least four base-16 digits must be provided.</p>
 
-<p>(3) If the input is not in one of those two formats, then it is assumed
-to be in <b>Yale</b>.</p>
+<p>(3) Enter <span class="tt">gau2</span> to look up all characters
+using that <b>Jyutping</b>.</p>
+
+<p>(4) If the input is not in one of the above three formats, then it is
+assumed to be in <b>Yale</b>.</p>
 
 <p><i>Yale diacritics:</i></p>
 
@@ -438,7 +445,10 @@ diacritic.</p>
   </tr>
 </table>
 
-<p>(F) Apostrophe codes are especially useful for syllabic M and NG,
+<p>(F) Left single quote and right single quote may be used
+interchangeably with apostrophe.</p>
+
+<p>(G) Apostrophe codes are especially useful for syllabic M and NG,
 which use obscure letter+diacritic combinations.</p>
             
 <!-- END Input notes documentation -->
