@@ -235,6 +235,97 @@ body {
       }
     }
   }
+  
+  /*
+   * Given user input typed into the search box, return an array
+   * containing integer values of all codepoints to display.
+   *
+   * The returned array may be empty if nothing matches.
+   *
+   * Parameters:
+   *
+   *   str : string - the query string
+   *
+   * Return:
+   *
+   *   array containing all matching codepoints as integer values
+   */
+  function doQuery(str) {
+    
+    var func_name = "doQuery";
+    var c;
+    
+    // Check parameter
+    if (typeof str !== "string") {
+      fault(func_name, 100);
+    }
+    
+    // First of all, trim leading and trailing whitespace and normalize
+    // to NFC
+    str = str.trim().normalize("NFC");
+    
+    // If string is empty after trimming, return empty array
+    if (str.length < 1) {
+      return [];
+    }
+    
+    // Get the first codepoint of string
+    c = str.codePointAt(0);
+    
+    // Check whether this string has a single codepoint above U+007F,
+    // and return an array with just that codepoint if so
+    if (c > 0x7f) {
+      if ((c < 0x10000) && (str.length === 1)) {
+        return [c];
+        
+      } else if (str.length === 2) {
+        return [c];
+      }
+    }
+    
+    // Handle Unicode literal
+    if ((/^u[0-9a-f]{4,6}$/i).test(str)) {
+      // We have a literal string, so begin by dropping the leading "u"
+      // character
+      str = str.slice(1);
+      
+      // Get the integer value of the base-16 number
+      c = parseInt(str, 16);
+      
+      // Return just that value if it is in Unicode range, beyond ASCII
+      // range, and not a surrogate, else return empty array
+      if ((c > 0x7f) && (c <= 0x10ffff) && 
+            ((c < 0xd800) || (c > 0xdfff))) {
+        return [c];
+        
+      } else {
+        return [];
+      }
+    }
+    
+    // Otherwise, if there is a decimal integer somewhere in the value,
+    // handle Jyutping
+    if ((/[0-9]/).test(str)) {
+      
+      // Make lowercase
+      str = str.toLowerCase();
+      
+      // If format basically correct, look up; else, return nothing
+      if ((/^[a-z]+[1-6]$/).test(str)) {
+        if (str in canto_table) {
+          // Return copy of array
+          return canto_table[str].map(x => x);
+        } else {
+          return [];
+        }
+      } else {
+        return [];
+      }
+    }
+    
+    // @@TODO: Yale
+    return [];
+  }
 
   /*
    * Public functions
@@ -324,16 +415,8 @@ body {
     }
     q = e.value;
     
-    // Trim value of whitespace, convert to lowercase, and normalize
-    q = q.trim().toLowerCase().normalize("NFC");
-    
-    // @@TODO: Yale conversion if selected
-    
-    // Go to the canto_table and look for all matching codepoints
-    cpa = [];
-    if (q in canto_table) {
-      cpa = canto_table[q];
-    }
+    // Perform the query
+    cpa = doQuery(q);
     
     // Build result string
     str = "";
