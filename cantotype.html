@@ -790,7 +790,7 @@ body {
     // on what follows
     if ((/^eu/).test(f)) {
       // For eui, eun, eut change to eo, else change to oe
-      if ((/^eu[int]/).test(f)) {
+      if ((/^eu[int]$/).test(f)) {
         f = "eo" + f.slice(2);
       } else {
         if (f.length > 2) {
