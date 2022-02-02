@@ -473,14 +473,33 @@ body {
     // Get the first codepoint of string
     c = str.codePointAt(0);
     
-    // Check whether this string has a single codepoint above U+007F,
-    // and return an array with just that codepoint if so
+    // Check whether this string has a single codepoint above U+007F AND
+    // the NFD decomposition of that codepoint does not begin with a
+    // Latin letter; if this is the case, return an array with just that
+    // codepoint
     if (c > 0x7f) {
+      // Check whether we have a single codepoint in the string
+      // (remember that supplemental codepoints take two characters)
       if ((c < 0x10000) && (str.length === 1)) {
-        return [c];
-        
+        i = true;
       } else if (str.length === 2) {
-        return [c];
+        i = true;
+      } else {
+        i = false;
+      }
+      
+      // If single extended codepoint, check whether NFD decomposition
+      // begins with an ASCII letter; if it does not, then return a
+      // result just of the given codepoint
+      if (i) {
+        sa = str.normalize("NFD");
+        if (sa.length > 0) {
+          c = sa.charCodeAt(0);
+          if (((c < 0x41) || (c > 0x5a)) &&
+              ((c < 0x61) || (c > 0x7a))) {
+            return [c];
+          }
+        }
       }
     }
     
