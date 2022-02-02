@@ -120,6 +120,14 @@ body {
   font-size: 150%;
 }
 
+.cpr {
+  font-weight: bold;
+}
+
+.cpd {
+  font-style: italic;
+}
+
 .tt {
   font-family: monospace;
 }
@@ -208,6 +216,41 @@ body {
     
     // Throw exception
     throw ("ctt_html:" + func_name + ":" + String(loc));
+  }
+
+  /*
+   * Escape a string if necessary so that it can be included within
+   * HTML markup.
+   *
+   * This first escapes & as &amp;, and then escapes < as &lt; and > as
+   * &gt;
+   *
+   * Parameters:
+   *
+   *   str : string - the string to escape
+   *
+   * Return:
+   *
+   *   the escaped string
+   */
+  function htmlEsc(str) {
+    
+    var func_name = "htmlEsc";
+    
+    // Check parameter
+    if (typeof str !== "string") {
+      fault(func_name, 100);
+    }
+    
+    // Replace ampersand
+    str = str.replace(/&/g, "&amp;");
+    
+    // Replace markup characters
+    str = str.replace(/</g, "&lt;");
+    str = str.replace(/>/g, "&gt;");
+    
+    // Return escaped string
+    return str;
   }
 
   /*
@@ -892,7 +935,7 @@ body {
     
     var func_name = "handleQuery";
     var e, eResult;
-    var q, i, j, k, str, ra, m, cpa, cps, rra;
+    var q, i, j, k, str, ra, m, cpa, cps, rra, cph;
     
     // Get the result DIV
     eResult = document.getElementById("divResults");
@@ -921,15 +964,18 @@ body {
       
       // Add each result
       for(i = 0; i < cpa.length; i++) {
+        // Get lowercase base-16 of character
+        cph = (cpa[i]).toString(16).toLowerCase();
+        
         // Add character and codepoint
         str = str + "<tr><td class=\"han\">";
         str = str + String.fromCharCode(cpa[i]);
         str = str + "</td><td class=\"cpt\">";
-        str = str + (cpa[i]).toString(16).toLowerCase();
+        str = str + cph;
         
         // Add all readings
         cps = (cpa[i]).toString(10);
-        str = str + "<td class=\"cpr\">";
+        str = str + "</td><td class=\"cpr\">";
         if (cps in m_readings) {
           rra = m_readings[cps];
           if (rra.length > 0) {
@@ -947,7 +993,14 @@ body {
         } else {
           str = str + "&nbsp";
         }
-        str = str + "</td>";
+        
+        // Add definition, if available
+        str = str + "</td><td class=\"cpd\">";
+        if (cph in canto_define) {
+          str = str + htmlEsc(canto_define[cph]);
+        } else {
+          str = str + "&nbsp;";
+        }
         
         // Finish row
         str = str + "</td></tr>";
