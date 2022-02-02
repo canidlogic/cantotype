@@ -57,7 +57,7 @@ body {
   max-width: 10em;
 }
 
-#divInputNotes {
+.clsNotes {
   background-color: white;
   max-width: 35em;
   padding: 0.5em;
@@ -130,6 +130,29 @@ body {
 
 .tt {
   font-family: monospace;
+}
+
+#txtWrite {
+  font-family: 'HKCS', sans-serif;
+  font-size: 150%;
+}
+
+#txtCode {
+  font-family: monospace;
+  font-size: 120%;
+}
+
+.clsLine {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+#divErrLine {
+  display: none;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  font-weight: bold;
+  color: red;
 }
 
     </style>
@@ -948,6 +971,205 @@ body {
   }
 
   /*
+   * Event handler for generated links from codepoint numbers that
+   * should automatically type the character into the typing box.
+   */
+  function typeChar(c) {
+    
+    var func_name = "typeChar";
+    var e, si, str;
+    
+    // Check parameter
+    if (typeof(c) !== "number") {
+      fault(func_name, 100);
+    }
+    if (!isFinite(c)) {
+      fault(func_name, 101);
+    }
+    c = Math.floor(c);
+    if ((c < 0) || (c > 0x10ffff) ||
+          ((c >= 0xd800) && (c <= 0xdfff))) {
+      fault(func_name, 102);
+    }
+    
+    // Ignore call if character is zero nul
+    if (c === 0) {
+      return;
+    }
+    
+    // Convert character to string
+    c = String.fromCodePoint(c);
+    
+    // Look up the typing box
+    e = document.getElementById("txtWrite");
+    if (e == null) {
+      fault(func_name, 200);
+    }
+    
+    // Get the index of the character that follows the input cursor, or
+    // the first character in the selected text if there is a selection
+    // if the typing box
+    si = e.selectionStart;
+    
+    // If this index is not an number, set it to -1
+    if (typeof si !== "number") {
+      si = -1;
+    }
+    
+    // Floor the index to an integer
+    si = Math.floor(si);
+    
+    // If not in range (including character index that would come after
+    // everything that has been typed), set to end of range
+    if ((si < 0) || (si > e.value.length)) {
+      si = e.value.length;
+    }
+    
+    // Get the string in the box
+    str = e.value;
+    
+    // Divide string into prefix and suffix
+    if (si > 0) {
+      prefix = str.slice(0, si);
+    } else {
+      prefix = "";
+    }
+    
+    if (si < str.length) {
+      suffix = str.slice(si);
+    } else {
+      suffix = "";
+    }
+    
+    // Insert the new codepoint
+    str = prefix + c + suffix;
+    
+    // Update the typing box and move cursor to end of entered text
+    e.value = str;
+    e.setSelectionRange(si + c.length, si + c.length);
+  }
+
+  /*
+   * Event handler for when the "append" button is clicked with the
+   * codepoint box.
+   */
+  function handleCodebox() {
+    
+    var func_name = "handleCodebox";
+    var e, str, sa, cps, found_err, x, c, si;
+    var prefix, suffix;
+    
+    // Begin by hiding the error box if shown
+    dismiss("divErrLine");
+    
+    // Get the codebox element
+    e = document.getElementById("txtCode");
+    if (e == null) {
+      fault(func_name, 100);
+    }
+    
+    // Get the value of the codebox string
+    str = e.value;
+    
+    // Start with empty codepoint string
+    cps = "";
+    
+    // Split codebox string using space, tab, and line break as
+    // delimiter
+    sa = str.split(/[ \t\r\n]+/);
+    
+    // Add all codepoints to the codepoint string
+    found_err = false;
+    for(x = 0; x < sa.length; x++) {
+      // Get current codepoint element
+      c = sa[x];
+      
+      // If current codepoint element is empty, skip it
+      if (c.length < 1) {
+        continue;
+      }
+      
+      // Make sure we got a sequence of 1-6 hex digits
+      if (!((/^[0-9A-Fa-f]{1,6}$/).test(c))) {
+        found_err = true;
+        break;
+      }
+      
+      // Convert to numeric value
+      c = parseInt(c, 16);
+      
+      // Check that Unicode codepoint range, not nul, and not surrogate
+      if ((c < 1) || (c > 0x10ffff) || 
+            ((c >= 0xd800) && (c <= 0xdfff))) {
+        found_err = true;
+        break;
+      }
+      
+      // Add to codepoint string
+      cps = cps + String.fromCodePoint(c);
+    }
+    
+    // Check for error
+    if (found_err) {
+      appear("divErrLine");
+      return;
+    }
+    
+    // Ignore if nothing to add
+    if (cps.length < 1) {
+      return;
+    }
+    
+    // If we got here successfully, look up the typing box
+    e = document.getElementById("txtWrite");
+    if (e == null) {
+      fault(func_name, 200);
+    }
+    
+    // Get the index of the character that follows the input cursor, or
+    // the first character in the selected text if there is a selection
+    // if the typing box
+    si = e.selectionStart;
+    
+    // If this index is not an number, set it to -1
+    if (typeof si !== "number") {
+      si = -1;
+    }
+    
+    // Floor the index to an integer
+    si = Math.floor(si);
+    
+    // If not in range (including character index that would come after
+    // everything that has been typed), set to end of range
+    if ((si < 0) || (si > e.value.length)) {
+      si = e.value.length;
+    }
+    
+    // Get the string in the box
+    str = e.value;
+    
+    // Divide string into prefix and suffix
+    if (si > 0) {
+      prefix = str.slice(0, si);
+    } else {
+      prefix = "";
+    }
+    
+    if (si < str.length) {
+      suffix = str.slice(si);
+    } else {
+      suffix = "";
+    }
+    
+    // Insert the new codepoint string
+    str = prefix + cps + suffix;
+    
+    // Update the typing box and move cursor to end of entered text
+    e.value = str;
+    e.setSelectionRange(si + cps.length, si + cps.length);
+  }
+
+  /*
    * Event handler for when the query button is clicked.
    */
   function handleQuery() {
@@ -986,11 +1208,16 @@ body {
         // Get lowercase base-16 of character
         cph = (cpa[i]).toString(16).toLowerCase();
         
-        // Add character and codepoint
+        // Add character and codepoint, with codepoint being a link that
+        // types the character
         str = str + "<tr><td class=\"han\">";
         str = str + String.fromCodePoint(cpa[i]);
         str = str + "</td><td class=\"cpt\">";
+        str = str + "<a href=\"javascript:void ctt_html.typeChar("
+        str = str + (cpa[i]).toString(10);
+        str = str + ");\">";
         str = str + cph;
+        str = str + "</a>";
         
         // Add all readings
         cps = (cpa[i]).toString(10);
@@ -1045,10 +1272,26 @@ body {
   function handleLoad() {
     
     var func_name = "handleLoad";
-    var e;
+    var e, eErrLine;
     
     // Load the readings table
     loadReadings();
+    
+    // Add an event handler to the codepoint box that immediately hides
+    // the error DIV for codepoints if there is any input
+    e = document.getElementById("txtCode");
+    if (e == null) {
+      fault(func_name, 800);
+    }
+    
+    eErrLine = document.getElementById("divErrLine");
+    if (eErrLine == null) {
+      fault(func_name, 810);
+    }
+    
+    e.oninput = function(ev) {
+      eErrLine.style.display = "none";
+    };
     
     // Hide the splash-screen DIV and show the main DIV
     e = document.getElementById("divSplash");
@@ -1073,6 +1316,8 @@ body {
   window.ctt_html = {
     "appear": appear,
     "dismiss": dismiss,
+    "typeChar": typeChar,
+    "handleCodebox": handleCodebox,
     "handleQuery": handleQuery,
     "handleLoad": handleLoad
   };
@@ -1112,7 +1357,7 @@ window.onload = ctt_html.handleLoad;
           </td>
         </tr>
       </table>
-      <div id="divInputNotes">
+      <div id="divInputNotes" class="clsNotes">
         <div>
           <u>Input format</u><br/>
           <a href="javascript:void ctt_html.appear('divNotes');">
@@ -1189,6 +1434,76 @@ which use obscure letter+diacritic combinations.</p>
       <div id="divResults">
         &nbsp;
       </div>
+      <hr/>
+      <div id="divTypeNotes" class="clsNotes">
+        <div>
+          <u>Typing notes</u><br/>
+          <a href="javascript:void ctt_html.appear('divTNotes');">
+            [&nbsp;Show&nbsp;]
+          </a>
+          <a href="javascript:void ctt_html.dismiss('divTNotes');">
+            [&nbsp;Hide&nbsp;]
+          </a>
+        </div>
+        
+        <div id="divTNotes">
+
+<!-- BEGIN Typing notes documentation -->
+
+<p>(1) You can <b>freely type</b> in the following box and use cut,
+copy, paste as usual.</p>
+
+<p>(2) You can <b>search for a specific character</b> using the query
+box at the top of this page and then clicking the codepoint number in
+the results will automatically append that character to the current
+cursor position in this typing box.</p>
+
+<p>(3) You can use the <b>codepoint entry box</b> given after this
+typing box to enter a sequence of Unicode codepoints in base-16 format,
+with codepoints in the entry box separated by spaces.  (The spaces will
+not appear in the output.)  Clicking the "Insert" button will then 
+insert all these codepoints at the current cursor position in this
+typing box.</p>
+
+<p>(4) Beneath the typing box are <b>Chinese punctuation</b> buttons,
+which also have their codepoint values in the box in case you want to
+use them in the codepoint entry box.  Space is an ideographic space, and
+comma and stop as well as quotation marks are also ideographic
+versions.</p>
+
+<p>(5) You can <b>resize</b> both the typing box and the codepoint entry
+box by dragging the corner.</p>
+
+<!-- END Typing notes documentation -->        
+        </div>
+      </div>
+      <div class="clsLine"><u>Typing box:</u></div>
+      <textarea id="txtWrite" rows="5" cols="33"></textarea>
+      <div class="clsLine">
+        <input type="button" value="Space (3000)"
+          onclick="ctt_html.typeChar(0x3000)"/>
+        <input type="button" value="Comma (3001)"
+          onclick="ctt_html.typeChar(0x3001)"/>
+        <input type="button" value="Stop (3002)"
+          onclick="ctt_html.typeChar(0x3002)"/>
+      </div>
+      <div class="clsLine">
+        <input type="button" value="Open quote (300C)"
+          onclick="ctt_html.typeChar(0x300c)"/>
+        <input type="button" value="Close quote (300D)"
+          onclick="ctt_html.typeChar(0x300d)"/>
+      </div>
+      <div class="clsLine"><u>Codepoint entry box:</u></div>
+      <textarea id="txtCode" rows="5" cols="33"></textarea>
+      <div id="divErrLine">
+        ERROR: Invalid codepoint input!
+      </div>
+      <div class="clsLine">
+        <input type="button" value="Insert"
+          onclick="ctt_html.handleCodebox()"/>
+      </div>
+      <hr/>
+      <div><i>Cantotype</i></div>
     </div>
   </body>
 </html>
