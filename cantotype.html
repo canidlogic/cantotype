@@ -734,25 +734,6 @@ body {
       fault(func_name, 300);
     }
     
-    // If an "h" after the last vowel, then begin tone at 6, while
-    // otherwise begin tone at 3; remove marker h if present
-    if (lvi < str.length - 1) {
-      if (str.charAt(lvi + 1) === "h") {
-        t = 6;
-        if (lvi + 2 >= str.length) {
-          str = str.slice(0, -1);
-        } else {
-          str = str.slice(0, lvi + 1) + str.slice(lvi + 2);
-        }
-        
-      } else {
-        t = 3;
-      }
-      
-    } else {
-      t = 3;
-    }
-    
     // Figure out whether there is an apostrophe before and/or after the
     // first vowel
     ab = false;
@@ -791,6 +772,25 @@ body {
       if (lvi > fvi) {
         lvi--;
       }
+    }
+    
+    // If an "h" after the last vowel, then begin tone at 6, while
+    // otherwise begin tone at 3; remove marker h if present
+    if (lvi < str.length - 1) {
+      if (str.charAt(lvi + 1) === "h") {
+        t = 6;
+        if (lvi + 2 >= str.length) {
+          str = str.slice(0, -1);
+        } else {
+          str = str.slice(0, lvi + 1) + str.slice(lvi + 2);
+        }
+        
+      } else {
+        t = 3;
+      }
+      
+    } else {
+      t = 3;
     }
     
     // Adjust tone based on apostrophes that surrounded the initial
@@ -837,7 +837,7 @@ body {
     }
     
     f = str.slice(fvi);
-    
+
     // Make sure initial is allowed, if present
     if (nt.length > 0) {
       if (VALID_INITIALS.indexOf(":" + nt + ":") < 0) {
