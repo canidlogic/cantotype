@@ -1010,7 +1010,7 @@ body {
     // the first character in the selected text if there is a selection
     // if the typing box
     si = e.selectionStart;
-    
+
     // If this index is not an number, set it to -1
     if (typeof si !== "number") {
       si = -1;
@@ -1478,7 +1478,7 @@ box by dragging the corner.</p>
         </div>
       </div>
       <div class="clsLine"><u>Typing box:</u></div>
-      <textarea id="txtWrite" rows="5" cols="33"></textarea>
+      <textarea id="txtWrite" rows="5" cols="20"></textarea>
       <div class="clsLine">
         <input type="button" value="Space (3000)"
           onclick="ctt_html.typeChar(0x3000)"/>
@@ -1494,7 +1494,7 @@ box by dragging the corner.</p>
           onclick="ctt_html.typeChar(0x300d)"/>
       </div>
       <div class="clsLine"><u>Codepoint entry box:</u></div>
-      <textarea id="txtCode" rows="5" cols="33"></textarea>
+      <textarea id="txtCode" rows="5" cols="20"></textarea>
       <div id="divErrLine">
         ERROR: Invalid codepoint input!
       </div>
