@@ -7,6 +7,10 @@ use warnings FATAL => "utf8";
 #
 use JSON::Tiny qw(decode_json encode_json);
 
+# Core dependencies
+#
+use File::Spec;
+
 =head1 NAME
 
 canto_compile.pl - Compile a JavaScript table for Cantotype.
@@ -330,6 +334,37 @@ sub check_reading {
   return 1;
 }
 
+# Given a path to a directory and a filename within that directory,
+# return the full path to that file within the directory.
+#
+# Parameters:
+#
+#   1 : string - the path to the directory
+#
+#   2 : string - the filename
+#
+# Return:
+#
+#   string - the path to the file
+#
+sub subfile {
+  # Check parameter count
+  ($#_ == 1) or die "Wrong number of parameters, stopped";
+  
+  # Get parameters as strings
+  my $path_dir  = shift;
+  my $path_name = shift;
+  
+  $path_dir  = "$path_dir";
+  $path_name = "$path_name";
+  
+  # Split the directory
+  (my $dvol, my $ddir, undef) = File::Spec->splitpath($path_dir, 1);
+  
+  # Return the full path
+  return File::Spec->catpath($dvol, $ddir, $path_name);
+}
+
 # ==================
 # Program entrypoint
 # ==================
@@ -340,25 +375,40 @@ sub check_reading {
 
 # Store the parameters
 #
-my $path_hkscs    = $ARGV[0];
-my $path_mappings = $ARGV[1];
-my $path_readings = $ARGV[2];
+my $path_hkscs  = $ARGV[0];
+my $path_unihan = $ARGV[1];
+my $path_dict   = $ARGV[2];
 
-# Check that files exist
+# Check that paths exist
 #
-(-f $path_hkscs) or die "Can't find '$path_hkscs', stopped";
-(-f $path_mappings) or die "Can't find '$path_mappings', stopped";
-(-f $path_readings) or die "Can't find '$path_readings', stopped";
+(-f $path_hkscs) or die "Can't find file '$path_hkscs', stopped";
+(-d $path_unihan) or die "Can't find directory '$path_unihan', stopped";
+(-f $path_dict) or die "Can't find file '$path_dict', stopped";
+
+# Define Unihan data file paths
+#
+my $unihan_irg   = subfile($path_unihan, "Unihan_IRGSources.txt");
+my $unihan_other = subfile($path_unihan, "Unihan_OtherMappings.txt");
+my $unihan_radst = subfile($path_unihan,
+                              "Unihan_RadicalStrokeCounts.txt");
+my $unihan_read  = subfile($path_unihan, "Unihan_Readings.txt");
+
+# Check for existence of Unihan data files
+#
+(-f $unihan_irg) or die "Can't find file '$unihan_irg', stopped";
+(-f $unihan_other) or die "Can't find file '$unihan_other', stopped";
+(-f $unihan_radst) or die "Can't find file '$unihan_radst', stopped";
+(-f $unihan_read) or die "Can't file file '$unihan_read', stopped";
 
 # Start with an empty hash, which will map decimal integer codepoints to
 # array references containing Jyutping romanizations
 #
 my %cmap;
 
-# First, open the mappings file
+# First, open the other mappings file
 #
-open(my $fhm, "< :utf8", $path_mappings) or
-  die "Failed to open '$path_mappings', stopped";
+open(my $fhm, "< :utf8", $unihan_other) or
+  die "Failed to open '$unihan_other', stopped";
 
 # Process mappings file line by line and add all Big5 Unicode codepoints
 # to the hash, with empty array reference values for now
@@ -387,8 +437,8 @@ close($fhm);
 
 # Second, open the readings file
 #
-open(my $fhr, "< :utf8", $path_readings) or
-  die "Failed to open '$path_readings', stopped";
+open(my $fhr, "< :utf8", $unihan_read) or
+  die "Failed to open '$unihan_read', stopped";
 
 # Process readings file line by line, and for any Cantonese reading
 # where the codepoint is already in the mappings file (indicating that
@@ -550,8 +600,8 @@ correct_cmap(\%cmap);
 # open the readings file again so we can make another pass and this time
 # build the definitions table for any codepoints that are in our %cmap
 #
-open(my $fhd, "< :utf8", $path_readings) or
-  die "Failed to open '$path_readings', stopped";
+open(my $fhd, "< :utf8", $unihan_read) or
+  die "Failed to open '$unihan_read', stopped";
 
 # Process readings file line by line, and build %dmap that maps
 # lowercase base-16 codepoint values to definition strings, but only for
