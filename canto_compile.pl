@@ -196,6 +196,8 @@ my $VALID_FINALS =
 # Given a reference to the %cmap hash, apply corrections for typos and
 # obscure characters in the input datasets.
 #
+# IMPORTANT: do this *before* upgrading the cmap with upgrade_cmap().
+#
 # The following obscure codepoints with non-conformant Jyutping are
 # DROPPED from the %cmap if present:
 #
@@ -625,6 +627,114 @@ sub apply_hkscs {
   }
 }
 
+# Upgrade a %cmap reference from just storing Cantonese readings for
+# each codepoint to storing a full descriptive object for each
+# codepoint.
+#
+# Each value in the %cmap must be an array reference when this function
+# is called.
+#
+# The array reference values will be converted into hash reference
+# values where the original array reference is stored in a "crd"
+# property and the numeric codepoint value is stored in a "cpv"
+# property.
+#
+# This function will also check that all the Jyutping readings are
+# valid, using check_reading().
+#
+# Parameters:
+#
+#   1 : hash ref - reference to the %cmap
+#
+sub upgrade_cmap {
+  # Check parameter count
+  ($#_ == 0) or die "Wrong number of parameters, stopped";
+  
+  # Get parameter and check type
+  my $cm = shift;
+  (ref($cm) eq 'HASH') or die "Wrong parameter type, stopped";
+  
+  # Go through all the keys and upgrade the values to hash references
+  for my $k (keys %$cm) {
+    # Get current value
+    my $old_val = $cm->{$k};
+    
+    # Make sure old value is an array reference
+    (ref($old_val) eq 'ARRAY') or die "Wrong cmap state, stopped";
+    
+    # Check all the readings in the array
+    for my $r (@$old_val) {
+      (check_reading($r)) or die "Invalid Jyutping '$r', stopped";
+    }
+    
+    # Define a new hash for the new value
+    my %h;
+    
+    # Add the properties
+    $h{'cpv'} = int($k);
+    $h{'crd'} = $old_val;
+    
+    # Upgrade this key in the cmap
+    $cm->{$k} = \%h;
+  }
+}
+
+# Given a %cmap that has been upgraded with upgrade_cmap(), add "dfn"
+# properties for any kDefinition entries found in the Unihan database.
+#
+# Parameters:
+#
+#   1 : hash ref - reference to the %cmap
+#
+#   2 : string - path to the Unihan "readings" data file
+#
+sub add_defns {
+  # Check parameter count
+  ($#_ == 1) or die "Wrong number of parameters, stopped";
+  
+  # Get parameters and check types
+  my $cm        = shift;
+  my $data_path = shift;
+  
+  (ref($cm) eq 'HASH') or die "Wrong parameter type, stopped";
+  $data_path = "$data_path";
+  
+  # Open the readings file so we can add definitions
+  open(my $fhd, "< :utf8", $data_path) or
+    die "Failed to open '$data_path', stopped";
+  
+  # Process readings file line by line, and add any definitions to
+  # codepoints already in %cmap
+  while (<$fhd>) {
+    # Skip line if blank
+    if (/^[ \t\r\n]*$/u) {
+      next;
+    }
+    
+    # Skip line if first character is # indicating comment
+    if (/^[ \t]*#/u) {
+      next;
+    }
+    
+    # If this is a definition record, process it
+    if (/^[ \t]*U\+([0-9a-fA-F]{4,6})\tkDefinition\t(.+)[\r\n]*$/u) {
+      my $cpv = hex($1);
+      my $dstr = $2;
+      
+      # Skip this definition record if it is not in the %cmap
+      if (not exists $cm->{$cpv}) {
+        next;
+      }
+      
+      # Store the definition
+      $cm->{$cpv}->{'dfn'} = $dstr;
+    }
+  }
+  
+  # Close the readings file
+  close($fhd);
+}
+
 # ==================
 # Program entrypoint
 # ==================
@@ -680,102 +790,33 @@ apply_canto(\%cmap, $unihan_read);
 #
 apply_hkscs(\%cmap, $path_hkscs);
 
-# Apply corrections to %cmap
+# Apply corrections to %cmap and upgrade to have objects for each of the
+# codepoints
 #
 correct_cmap(\%cmap);
+upgrade_cmap(\%cmap);
 
-# We now have a mapping of Unicode codepoints to all their readings;
-# open the readings file again so we can make another pass and this time
-# build the definitions table for any codepoints that are in our %cmap
+# Add any kDefinition fields that we find in Unihan
 #
-open(my $fhd, "< :utf8", $unihan_read) or
-  die "Failed to open '$unihan_read', stopped";
+add_defns(\%cmap, $unihan_read);
 
-# Process readings file line by line, and build %dmap that maps
-# lowercase base-16 codepoint values to definition strings, but only for
-# codepoints that are in %cmap
+# Convert the %cmap into an array @car
 #
-my %dmap;
-while (<$fhd>) {
-  # Skip line if blank
-  if (/^[ \t\r\n]*$/u) {
-    next;
-  }
-  
-  # Skip line if first character is # indicating comment
-  if (/^[ \t]*#/u) {
-    next;
-  }
-  
-  # If this is a definition record, process it
-  if (/^[ \t]*U\+([0-9a-fA-F]{4,6})\tkDefinition\t(.+)[\r\n]*$/u) {
-    my $cpv = hex($1);
-    my $dstr = $2;
-    
-    # Skip this definition record if it is not in the %cmap
-    if (not exists $cmap{$cpv}) {
-      next;
-    }
-    
-    # Get the lowercase hex version of the codepoint value
-    $cpv = sprintf("%x", $cpv);
-    
-    # Make sure codepoint not already defined
-    (not exists $dmap{$cpv}) or
-      die "Codepoint $cpv has multiple kDefinitions, stopped";
-    
-    # Store the definition
-    $dmap{$cpv} = $dstr;
-  }
+my @cmap_keys = keys %cmap;
+@cmap_keys = sort { int($a) <=> int($b) } @cmap_keys;
+
+my @car;
+for my $k (@cmap_keys) {
+  push @car, ($cmap{$k});
 }
 
-# Close the readings file
+# Encode the @car array into JSON
 #
-close($fhd);
-
-# Build a mapping of readings to their Unicode codepoints, and check
-# along the way that all readings follow Jyutping romanization
-#
-my %rmap;
-for my $cpv (keys %cmap) {
-  # Get the integer value of codepoint
-  my $cpi = int($cpv);
-  
-  # Process each reading
-  for my $r (@{$cmap{"$cpv"}}) {
-    # Verify reading
-    (check_reading($r)) or
-      die "Invalid Jyutping '$r', stopped";
-    
-    # If reading not yet defined, add it to rmap
-    if (not exists $rmap{$r}) {
-      $rmap{$r} = [];
-    }
-    
-    # Push the integer codepoint value onto reading array
-    push @{$rmap{$r}}, ($cpi);
-  }
-}
-
-# Go through the generated map and for each key, sort the array it maps
-# to so codepoints are in ascending order
-for my $k (keys %rmap) {
-  my @sa = sort { $a <=> $b } @{$rmap{$k}};
-  $rmap{$k} = \@sa;
-}
-
-# Encode the mapping of readings to codepoints into JSON
-#
-my $rmap_json = encode_json(\%rmap);
-
-# Encode the definition table into JSON
-#
-my $dmap_json = encode_json(\%dmap);
+my $car_json = encode_json(\@car);
 
 # Print the completed JavaScript to output
 #
-print "var canto_table = $rmap_json;\n";
-print "var canto_define = $dmap_json;\n";
+print "var canto_chars = $car_json;\n";
 
 =head1 AUTHOR
 
