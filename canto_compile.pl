@@ -423,6 +423,208 @@ sub grab_big5 {
   close($fhm);
 }
 
+# Given a reference to a %cmap hash that has been initialized, add
+# Cantonese readings from the Unihan data.
+#
+# The %cmap should have been run through grab_big5() first.  That
+# function adds codepoint entries for all core Big5 codepoints in the
+# Unihan data, and maps each of them to empty array references.
+#
+# This function will run through all the Cantonese readings in the
+# Unihan database and add readings to the codepoints that are already in
+# %cmap.  No new codepoints will be added to %cmap by this function.
+#
+# Parameters:
+#
+#   1 : hash ref - reference to the %cmap
+#
+#   2 : string - path to the "readings" Unihan data file
+#
+sub apply_canto {
+  # Check parameter count
+  ($#_ == 1) or die "Wrong number of parameters, stopped";
+  
+  # Get parameters and check types
+  my $cm        = shift;
+  my $data_path = shift;
+  
+  (ref($cm) eq 'HASH') or die "Wrong parameter type, stopped";
+  $data_path = "$data_path";
+  
+  # Open the readings file
+  open(my $fhr, "< :utf8", $data_path) or
+    die "Failed to open '$data_path', stopped";
+  
+  # Process readings file line by line, and for any Cantonese reading
+  # where the codepoint is already in the mappings file, push all
+  # readings onto the array value, after making sure the array doesn't
+  # already contain that reading
+  while (<$fhr>) {
+    # Skip line if blank
+    if (/^[ \t\r\n]*$/u) {
+      next;
+    }
+    
+    # Skip line if first character is # indicating comment
+    if (/^[ \t]*#/u) {
+      next;
+    }
+    
+    # If this is a Cantonese reading record, process it
+    if (/^[ \t]*U\+([0-9a-fA-F]{4,6})\tkCantonese\t(.+)[\r\n]*$/u) {
+      my $cpv = hex($1);
+      my $rstr = $2;
+      
+      # Check that exactly one syllable defined
+      ($rstr =~ /^[A-Za-z]+[1-6]$/u) or
+        die "Invalid kCantonese value: $rstr stopped";
+      
+      # Check if reading already present
+      my $already = 0;
+      for my $r (@{$cm->{"$cpv"}}) {
+        if ($r eq $rstr) {
+          $already = 1;
+          last;
+        }
+      }
+      
+      # If not already defined, add the reading
+      if (not $already) {
+        push @{$cm->{"$cpv"}}, ($rstr);
+      }
+    }
+  }
+  
+  # Close the readings file
+  close($fhr);  
+}
+
+# Given a reference to a %cmap hash, add extra Cantonese readings and
+# codepoints from the HKSCS supplement.
+#
+# This function will run through all the codepoints in the HKSCS
+# supplement that have at least one Cantonese reading, add the
+# codepoints to the %cmap if not already defined, and add the HKSCS
+# readings to the codepoint if not already present.
+#
+# Parameters:
+#
+#   1 : hash ref - reference to the %cmap
+#
+#   2 : string - path to the HKSCS data file
+#
+sub apply_hkscs {
+  # Check parameter count
+  ($#_ == 1) or die "Wrong number of parameters, stopped";
+  
+  # Get parameters and check types
+  my $cm        = shift;
+  my $data_path = shift;
+  
+  (ref($cm) eq 'HASH') or die "Wrong parameter type, stopped";
+  $data_path = "$data_path";
+  
+  # Open the HKSCS file in raw mode
+  open(my $fhh, "< :raw", $data_path) or
+    die "Failed to open '$data_path', stopped";
+  
+  # Slurp the whole HKSCS file into memory
+  my $hkscs;
+  {
+    local $/;
+    $hkscs = <$fhh>;
+  }
+  
+  # Close HKSCS file
+  close($fhh);
+  
+  # If file starts with UTF-8 BOM, remove it
+  if (length $hkscs > 3) {
+    if ((ord(substr($hkscs, 0, 1)) == 0xef) and
+        (ord(substr($hkscs, 1, 1)) == 0xbb) and
+        (ord(substr($hkscs, 2, 1)) == 0xbf)) {
+      $hkscs = substr($hkscs, 3);
+    }
+  }
+  
+  # Decode JSON
+  $hkscs = decode_json($hkscs);
+  
+  # Make sure top-level JSON is array
+  (ref($hkscs) eq "ARRAY") or
+    die "HKSCS must be JSON array, stopped";
+  
+  # Go through all JSON records, and for each that has a Cantonese
+  # reading, add it to the hash, making sure it's not already in there
+  for my $h (@$hkscs) {
+    
+    # Make sure element is hash reference
+    (ref($h) eq "HASH") or
+      die "HKSCS elements must be JSON objects, stopped";
+    
+    # Make sure required codepoint and cantonese properties are there
+    (exists $h->{'codepoint'}) or
+      die "HKSCS elements must all have codepoint properties, stopped";
+    (exists $h->{'cantonese'}) or
+      die "HKSCS elements must all have cantonese properties, stopped";
+    
+    # Get the properties
+    my $cpv  = $h->{'codepoint'};
+    my $cstr = $h->{'cantonese'};
+    
+    # Skip if cantonese property is empty
+    if ($cstr =~ /^[ \t]*$/u) {
+      next;
+    }
+    
+    # Parse the codepoint
+    $cpv = hex($cpv);
+    
+    # Replace periods with commas -- this will fix the "nuk6." typo in
+    # HKSCS2016
+    $cstr =~ s/\./,/ug;
+    
+    # Replace all commas with comma followed by space so that there is a
+    # space everywhere after commas -- this will fix the "taan3,wan6"
+    # typo that is missing a space in HKSCS2016
+    $cstr =~ s/,/, /ug;
+    
+    # Drop all commas -- we can parse the syllables with spaces, and
+    # there is a typo in HKSCS2016 at "jing1 mau5" with a missing comma
+    # that will be fixed if we go by whitespace instead
+    $cstr =~ s/,//ug;
+    
+    # Trim leading and trailing whitespace
+    $cstr =~ s/^[ \t]+//gu;
+    $cstr =~ s/[ \t]+$//gu;
+    
+    # Split by whitespace
+    my @car = split " ", $cstr;
+    
+    # Process each reading
+    for my $r (@car) {
+      # If codepoint doesn't exist yet, add it with empty array
+      if (not exists $cm->{"$cpv"}) {
+        $cm->{"$cpv"} = [];
+      }
+      
+      # Check whether reading already present in array
+      my $already = 0;
+      for my $s (@{$cm->{"$cpv"}}) {
+        if ($s eq $r) {
+          $already = 1;
+          last;
+        }
+      }
+      
+      # If not already defined, add the reading
+      if (not $already) {
+        push @{$cm->{"$cpv"}}, ($r);
+      }
+    }
+  }
+}
+
 # ==================
 # Program entrypoint
 # ==================
@@ -468,162 +670,15 @@ my %cmap;
 #
 grab_big5(\%cmap, $unihan_other);
 
-# Second, open the readings file
+# Second, add all Cantonese readings to those codepoints, using the
+# Unihan database
 #
-open(my $fhr, "< :utf8", $unihan_read) or
-  die "Failed to open '$unihan_read', stopped";
+apply_canto(\%cmap, $unihan_read);
 
-# Process readings file line by line, and for any Cantonese reading
-# where the codepoint is already in the mappings file (indicating that
-# it is in the core Big5 set), push all readings onto the array value,
-# after making sure the array doesn't already contain that reading
+# Third, add any additional Cantonese codepoints and readings from the
+# HKSCS supplement file
 #
-while (<$fhr>) {
-  # Skip line if blank
-  if (/^[ \t\r\n]*$/u) {
-    next;
-  }
-  
-  # Skip line if first character is # indicating comment
-  if (/^[ \t]*#/u) {
-    next;
-  }
-  
-  # If this is a Cantonese reading record, process it
-  if (/^[ \t]*U\+([0-9a-fA-F]{4,6})\tkCantonese\t(.+)[\r\n]*$/u) {
-    my $cpv = hex($1);
-    my $rstr = $2;
-    
-    # Check that exactly one syllable defined
-    ($rstr =~ /^[A-Za-z]+[1-6]$/u) or
-      die "Invalid kCantonese value: $rstr stopped";
-    
-    # Check if reading already present
-    my $already = 0;
-    for my $r (@{$cmap{"$cpv"}}) {
-      if ($r eq $rstr) {
-        $already = 1;
-        last;
-      }
-    }
-    
-    # If not already defined, add the reading
-    if (not $already) {
-      push @{$cmap{"$cpv"}}, ($rstr);
-    }
-  }
-}
-
-# Close the readings file
-#
-close($fhr);
-
-# Open the HKSCS file in raw mode
-#
-open(my $fhh, "< :raw", $path_hkscs) or
-  die "Failed to open '$path_hkscs', stopped";
-
-# Slurp the whole HKSCS file into memory
-#
-my $hkscs;
-{
-  local $/;
-  $hkscs = <$fhh>;
-}
-
-# Close HKSCS file
-#
-close($fhh);
-
-# If file starts with UTF-8 BOM, remove it
-#
-if (length $hkscs > 3) {
-  if ((ord(substr($hkscs, 0, 1)) == 0xef) and
-      (ord(substr($hkscs, 1, 1)) == 0xbb) and
-      (ord(substr($hkscs, 2, 1)) == 0xbf)) {
-    $hkscs = substr($hkscs, 3);
-  }
-}
-
-# Decode JSON
-#
-$hkscs = decode_json($hkscs);
-
-# Make sure top-level JSON is array
-#
-(ref($hkscs) eq "ARRAY") or
-  die "HKSCS must be JSON array, stopped";
-
-# Go through all JSON records, and for each that has a Cantonese
-# reading, add it to the hash, making sure it's not already in there
-#
-for my $h (@$hkscs) {
-  
-  # Make sure element is hash reference
-  (ref($h) eq "HASH") or
-    die "HKSCS elements must be JSON objects, stopped";
-  
-  # Make sure required codepoint and cantonese properties are there
-  (exists $h->{'codepoint'}) or
-    die "HKSCS elements must all have codepoint properties, stopped";
-  (exists $h->{'cantonese'}) or
-    die "HKSCS elements must all have cantonese properties, stopped";
-  
-  # Get the properties
-  my $cpv  = $h->{'codepoint'};
-  my $cstr = $h->{'cantonese'};
-  
-  # Skip if cantonese property is empty
-  if ($cstr =~ /^[ \t]*$/u) {
-    next;
-  }
-  
-  # Parse the codepoint
-  $cpv = hex($cpv);
-  
-  # Replace periods with commas -- this will fix the "nuk6." typo in
-  # HKSCS2016
-  $cstr =~ s/\./,/ug;
-  
-  # Replace all commas with comma followed by space so that there is a
-  # space everywhere after commas -- this will fix the "taan3,wan6" typo
-  # that is missing a space in HKSCS2016
-  $cstr =~ s/,/, /ug;
-  
-  # Drop all commas -- we can parse the syllables with spaces, and there
-  # is a typo in HKSCS2016 at "jing1 mau5" with a missing comma that
-  # will be fixed if we go by whitespace instead
-  $cstr =~ s/,//ug;
-  
-  # Trim leading and trailing whitespace
-  $cstr =~ s/^[ \t]+//gu;
-  $cstr =~ s/[ \t]+$//gu;
-  
-  # Split by whitespace
-  my @car = split " ", $cstr;
-  
-  # Process each reading
-  for my $r (@car) {
-    # If codepoint doesn't exist yet, add it with empty array
-    if (not exists $cmap{"$cpv"}) {
-      $cmap{"$cpv"} = [];
-    }
-    
-    # Check whether reading already present in array
-    my $already = 0;
-    for my $s (@{$cmap{"$cpv"}}) {
-      if ($s eq $r) {
-        $already = 1;
-        last;
-      }
-    }
-    
-    # If not already defined, add the reading
-    if (not $already) {
-      push @{$cmap{"$cpv"}}, ($r);
-    }
-  }
-}
+apply_hkscs(\%cmap, $path_hkscs);
 
 # Apply corrections to %cmap
 #
