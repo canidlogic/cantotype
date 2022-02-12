@@ -735,6 +735,87 @@ sub add_defns {
   close($fhd);
 }
 
+# Given an array reference, add dictionary entries from the CC-CEDICT
+# dictionary.
+#
+# Each dictionary entry is parsed from the CC-CEDICT data file and then
+# pushed onto the end of the given array reference.
+#
+# Parameters:
+#
+#   1 : array ref - reference to the dictionary array
+#
+#   2 : string - path to the CC-CEDICT data file
+#
+sub import_dictionary {
+  # Check parameter count
+  ($#_ == 1) or die "Wrong number of parameters, stopped";
+  
+  # Get parameters and check types
+  my $dm        = shift;
+  my $data_path = shift;
+  
+  (ref($dm) eq 'ARRAY') or die "Wrong parameter type, stopped";
+  $data_path = "$data_path";
+  
+  # Open the dictionary file so we can import records
+  open(my $fhd, "< :utf8", $data_path) or
+    die "Failed to open '$data_path', stopped";
+  
+  # Process dictionary file line by line, and add definition records to
+  # the array reference
+  while (<$fhd>) {
+    # Skip line if blank
+    if (/^[ \t\r\n]*$/u) {
+      next;
+    }
+    
+    # Skip line if first character is # indicating comment
+    if (/^[ \t]*#/u) {
+      next;
+    }
+    
+    # Parse the dictionary record
+    (/^([^ ]+) ([^ ]+) \[([^\]]*)\] \/([^\r\n]*)\/[ \t\r\n]*$/u) or
+      die "Invalid CC-CEDICT record '$_', stopped";
+    
+    my $rf_trad = $1;
+    my $rf_simp = $2;
+    my $rf_piny = $3;
+    my $rf_dfns = $4;
+
+    # Traditional and simplified reading fields are as-is strings
+    $rf_trad = "$rf_trad";
+    $rf_simp = "$rf_simp";
+    
+    # Begin by trimming leading and trailing whitespace from pinyin
+    # string
+    $rf_piny = "$rf_piny";
+    $rf_piny =~ s/^[ \t]+//gu;
+    $rf_piny =~ s/[ \t]+$//gu;
+    
+    # Split pinyin reading into entities according to whitespace
+    # separators
+    my @pya = split " ", $rf_piny;
+    
+    # For definitions string, split by "/" marks (the opening and
+    # closing slash marks are not included in the definitions string)
+    my @dfa = split /\//, $rf_dfns;
+    
+    # Trim each definition of leading and trailing whitespace
+    for(my $i = 0; $i <= $#dfa; $i++) {
+      $dfa[$i] =~ s/^[ \t]+//gu;
+      $dfa[$i] =~ s/[ \t]+$//gu;
+    }
+
+    # Push the dictionary record to the end of the dictionary array
+    push @$dm, ([$rf_trad, $rf_simp, \@pya, \@dfa]);
+  }
+  
+  # Close the dictionary file
+  close($fhd);
+}
+
 # ==================
 # Program entrypoint
 # ==================
@@ -814,9 +895,19 @@ for my $k (@cmap_keys) {
 #
 my $car_json = encode_json(\@car);
 
+# Import the CC-CEDICT dictionary
+#
+my @dar;
+import_dictionary(\@dar, $path_dict);
+
+# Encode the @dar dictionary array into JSON
+#
+my $dar_json = encode_json(\@dar);
+
 # Print the completed JavaScript to output
 #
 print "var canto_chars = $car_json;\n";
+print "var canto_words = $dar_json;\n";
 
 =head1 AUTHOR
 
