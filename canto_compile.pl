@@ -365,6 +365,64 @@ sub subfile {
   return File::Spec->catpath($dvol, $ddir, $path_name);
 }
 
+# Given a reference to the %cmap hash, initialize it with the core Big5
+# codepoints from the Unihan database.
+#
+# The %cmap hash should be empty when this function is called.
+#
+# Only core Big5 codepoints defined in Unihan will be added by this
+# function.  This does NOT include Cantonese specific extensions with
+# HKSCS.
+#
+# The keys within the %cmap will be set to unsigned decimal integer
+# strings for the codepoint value.  The values within the %cmap will all
+# be set to empty arrays.
+#
+# Parameters:
+#
+#   1 : hash ref - reference to the %cmap
+#
+#   2 : string - path to the "other mappings" Unihan data file
+#
+sub grab_big5 {
+  # Check parameter count
+  ($#_ == 1) or die "Wrong number of parameters, stopped";
+  
+  # Get parameters and check types
+  my $cm        = shift;
+  my $data_path = shift;
+  
+  (ref($cm) eq 'HASH') or die "Wrong parameter type, stopped";
+  $data_path = "$data_path";
+  
+  # Open the other mappings file
+  open(my $fhm, "< :utf8", $data_path) or
+    die "Failed to open '$data_path', stopped";
+  
+  # Process mappings file line by line and add all Big5 Unicode
+  # codepoints to the hash, with empty array reference values for now
+  while (<$fhm>) {
+    # Skip line if blank
+    if (/^[ \t\r\n]*$/u) {
+      next;
+    }
+    
+    # Skip line if first character is # indicating comment
+    if (/^[ \t]*#/u) {
+      next;
+    }
+    
+    # If this is a Big5 record, add to the hash
+    if (/^[ \t]*U\+([0-9a-fA-F]{4,6})\tkBigFive\t/u) {
+      my $cpv = hex($1);
+      $cm->{"$cpv"} = [];
+    }
+  }
+  
+  # Close the mappings file
+  close($fhm);
+}
+
 # ==================
 # Program entrypoint
 # ==================
@@ -405,35 +463,10 @@ my $unihan_read  = subfile($path_unihan, "Unihan_Readings.txt");
 #
 my %cmap;
 
-# First, open the other mappings file
+# First, grab all the core Big5 codepoints and map them to empty array
+# references for now
 #
-open(my $fhm, "< :utf8", $unihan_other) or
-  die "Failed to open '$unihan_other', stopped";
-
-# Process mappings file line by line and add all Big5 Unicode codepoints
-# to the hash, with empty array reference values for now
-#
-while (<$fhm>) {
-  # Skip line if blank
-  if (/^[ \t\r\n]*$/u) {
-    next;
-  }
-  
-  # Skip line if first character is # indicating comment
-  if (/^[ \t]*#/u) {
-    next;
-  }
-  
-  # If this is a Big5 record, add to the hash
-  if (/^[ \t]*U\+([0-9a-fA-F]{4,6})\tkBigFive\t/u) {
-    my $cpv = hex($1);
-    $cmap{"$cpv"} = [];
-  }
-}
-
-# Close the mappings file
-#
-close($fhm);
+grab_big5(\%cmap, $unihan_other);
 
 # Second, open the readings file
 #
