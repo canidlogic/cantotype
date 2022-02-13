@@ -206,6 +206,17 @@ body {
 (function() {
 
   /*
+   * Local data
+   * ==========
+   */
+
+  /*
+   * The character offset that follows the input cursor in the typing
+   * box, which is updated whenever the typing box loses focus.
+   */
+  var m_caret = 0;
+
+  /*
    * Local functions
    * ===============
    */
@@ -374,10 +385,8 @@ body {
       fault(func_name, 200);
     }
     
-    // Get the index of the character that follows the input cursor, or
-    // the first character in the selected text if there is a selection
-    // if the typing box
-    si = e.selectionStart;
+    // Get the index of the character that follows the input cursor
+    si = m_caret;
 
     // If this index is not an number, set it to -1
     if (typeof si !== "number") {
@@ -414,7 +423,7 @@ body {
     
     // Update the typing box and move cursor to end of entered text
     e.value = str;
-    e.setSelectionRange(si + c.length, si + c.length);
+    m_caret = si + c.length;
   }
 
   /*
@@ -494,10 +503,8 @@ body {
       fault(func_name, 200);
     }
     
-    // Get the index of the character that follows the input cursor, or
-    // the first character in the selected text if there is a selection
-    // if the typing box
-    si = e.selectionStart;
+    // Get the index of the character that follows the input cursor
+    si = m_caret;
     
     // If this index is not an number, set it to -1
     if (typeof si !== "number") {
@@ -534,7 +541,7 @@ body {
     
     // Update the typing box and move cursor to end of entered text
     e.value = str;
-    e.setSelectionRange(si + cps.length, si + cps.length);
+    m_caret = si + cps.length;
   }
 
   /*
@@ -828,10 +835,20 @@ body {
   function handleLoad() {
     
     var func_name = "handleLoad";
-    var e, eErrLine;
+    var e, eTypeBox, eErrLine;
     
     // Build indices
     ctt_main.buildIndices();
+    
+    // Add an event handler to the typing box that updates the position
+    // for insertion whenever focus is lost from the element
+    eTypeBox = document.getElementById("txtWrite");
+    if (eTypeBox == null) {
+      fault(func_name, 700);
+    }
+    eTypeBox.onblur = function(ev) {
+      m_caret = eTypeBox.selectionStart;
+    };
     
     // Add an event handler to the codepoint box that immediately hides
     // the error DIV for codepoints if there is any input
