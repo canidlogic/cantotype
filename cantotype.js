@@ -23,6 +23,12 @@
   var VALID_INITIALS = ":b:p:m:f:d:t:n:l:g:k:ng:h:gw:kw:w:j:ch:s:y:";
 
   /*
+   * The maximum number of results that may be returned from a
+   * dictionary query.
+   */
+  var MAX_DICT_RESULTS = 500;
+
+  /*
    * Local data
    * ==========
    */
@@ -232,9 +238,181 @@
   }
   
   /*
+   * Search str for a substring q, but only match when the found
+   * substring is neither preceded nor followed by other ASCII letters.
+   * 
+   * Parameters:
+   * 
+   *   str : string - the string to search through
+   * 
+   *   q : string - the substring to search for
+   * 
+   * Return:
+   * 
+   *   the index of the first substring match that is not surrounded by
+   *   any ASCII letters, or -1 if no such matches
+   */
+  function indexOfWord(str, q) {
+    
+    var func_name = "indexOfWord";
+    var i, c, suitable;
+    
+    // Check parameters
+    if ((typeof(str) !== "string") || (typeof(q) !== "string")) {
+      fault(func_name, 100);
+    }
+    
+    // Return -1 if either string empty
+    if ((str.length < 1) || (q.length < 1)) {
+      return -1;
+    }
+    
+    // Keep looking for suitable matches
+    i = 0;
+    for(i = str.indexOf(q, i); i >= 0; i = str.indexOf(q, i)) {
+      
+      // Start with the suitable flag set
+      suitable = true;
+      
+      // If this match does not start at the very beginning of the
+      // string, check previous character and if it is a letter, clear
+      // suitable flag
+      if (suitable && (i > 0)) {
+        c = str.charCodeAt(i - 1);
+        if (((c >= 0x41) && (c <= 0x5a)) || 
+            ((c >= 0x61) && (c <= 0x7a))) {
+          suitable = false;
+        }
+      }
+      
+      // If this match does not end at the very end of the string, check
+      // next character and if it is a letter, clear suitable flag
+      if (suitable && (i + q.length < str.length)) {
+         c = str.charCodeAt(i + q.length);
+         if (((c >= 0x41) && (c <= 0x5a)) || 
+            ((c >= 0x61) && (c <= 0x7a))) {
+          suitable = false;
+        }
+      }
+      
+      // If match is suitable, then leave loop at current match location
+      if (suitable) {
+        break;
+      }
+      
+      // If we got here, match is not suitable; if i is not currently at
+      // last character of string, advance it one so we start search at
+      // next position; otherwise, set it to -1 and end loop
+      if (i < str.length - 1) {
+        i++;
+      } else {
+        i = -1;
+        break;
+      }
+    }
+    
+    // Return the match result
+    return i;
+  }
+  
+  /*
    * Public functions
    * ================
    */
+  
+  /*
+   * Given user input typed into the search box for a word query, return
+   * an array containing indices into the dictionary for every matching
+   * word result.
+   * 
+   * The returned indices are into the array canto_words.  The maximum
+   * number of returned results is bounded by the MAX_DICT_RESULTS
+   * constant.  If there are more than this many matching results, an
+   * array containing the single integer -1 will be returned indicating
+   * that the search was too broad.
+   * 
+   * Parameters:
+   * 
+   *   str : string - the word query string
+   * 
+   * Return:
+   * 
+   *   array containing all matching dictionary indices, or array
+   *   containing single -1 integer value if too many results
+   */
+  function wordQuery(str) {
+    
+    var func_name = "wordQuery";
+    var qta, ra;
+    var i, j, da, f;
+    
+    // Check parameter
+    if (typeof str !== "string") {
+      fault(func_name, 100);
+    }
+    
+    // Trim leading and trailing whitespace
+    str = str.trim();
+    
+    // If string empty after trimming, return no results
+    if (str.length < 1) {
+      return [];
+    }
+    
+    // String must only have ASCII letters and whitespace or return no
+    // results
+    if (!((/^[A-Za-z \t]*$/).test(str))) {
+      return [];
+    }
+    
+    // Normalize case to lowercase
+    str = str.toLowerCase();
+    
+    // Split the query string into an array of search terms separated
+    // by whitespace
+    qta = str.split(/\s+/);
+    
+    // Find matching dictionary terms up to limit of MAX_DICT_RESULTS
+    ra = [];
+    for(i = 0; i < canto_words.length; i++) {
+      // Get current word definition array
+      da = canto_words[i][3];
+      
+      // Join all the definitions into a single string with definitions
+      // separated by spaces
+      da = da.join(" ");
+      
+      // Normalize case of definition string to lowercase
+      da = da.toLowerCase();
+      
+      // Check whether all query terms are somewhere in the definition
+      // string, using the indexOfWord function so we only search for
+      // full word matches; if any one is missing, then skip this word
+      f = true;
+      for(j = 0; j < qta.length; j++) {
+        if (indexOfWord(da, qta[j]) < 0) {
+          f = false;
+          break;
+        }
+      }
+      if (!f) {
+        continue;
+      }
+      
+      // If we got here, then add this index to the results
+      ra.push(i);
+      
+      // If we have exceeded the query limit, replace with special
+      // marker and leave the loop
+      if (ra.length > MAX_DICT_RESULTS) {
+        ra = [-1];
+        break;
+      }
+    }
+
+    // Return results
+    return ra;
+  }
   
   /*
    * Given user input typed into the search box for a character query,
@@ -820,6 +998,7 @@
    * All exports are declared within a global "ctt_main" object.
    */
   window.ctt_main = {
+    "wordQuery": wordQuery,
     "charQuery": charQuery,
     "seekCode": seekCode,
     "buildIndices": buildIndices
