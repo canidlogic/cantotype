@@ -169,6 +169,15 @@ body {
   color: red;
 }
 
+.dicthw {
+  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
+  font-size: 120%;
+}
+
+.dictdef {
+  font-family: 'NotoSansHK', 'LastResort', sans-serif;
+}
+
     </style>
     
     <!-- If JavaScript disabled, do not show the splash screen -->
@@ -529,11 +538,11 @@ body {
   }
 
   /*
-   * Event handler for when the query button is clicked.
+   * Event handler for when the query character button is clicked.
    */
-  function handleQuery() {
+  function queryChar() {
     
-    var func_name = "handleQuery";
+    var func_name = "queryChar";
     var e, eResult;
     var q, i, j, k, str, ra, m, cpa, cpi, rra, cph;
     
@@ -630,6 +639,188 @@ body {
   }
 
   /*
+   * Event handler for when the query word button is clicked.
+   */
+  function queryWord() {
+    
+    var func_name = "queryChar";
+    var e, eResult;
+    var q, dwi, str, c, i, j, k, dr, ca, cpi, rra;
+    
+    // Get the result DIV
+    eResult = document.getElementById("divResults");
+    if (eResult == null) {
+      fault(func_name, 100);
+    }
+    
+    // Clear results
+    eResult.innerHTML = "&nbsp;";
+    
+    // Get the query word
+    e = document.getElementById("txtInput");
+    if (e == null) {
+      fault(func_name, 110);
+    }
+    q = e.value;
+    
+    // Perform the query
+    dwi = ctt_main.wordQuery(q);
+    
+    // Build result string
+    str = "";
+    if ((dwi.length === 1) && (dwi[0] === -1)) {
+      // Too many matches found
+      str = "<p>Too many matches found!</p>";
+      
+    } else if (dwi.length > 0) {
+      // Matches found, so add each result
+      for(i = 0; i < dwi.length; i++) {
+        
+        // Get the dictionary record
+        dr = canto_words[dwi[i]];
+        
+        // First comes the headword as a traditional character
+        str = str + "<p class=\"dictp\">"
+        str = str + "<span class=\"dicthw\">";
+        str = str + htmlEsc(dr[0]);
+        
+        // If the simplified character is different, put it in
+        // parentheses
+        if (dr[1] !== dr[0]) {
+          str = str + " (" + htmlEsc(dr[1]) + ")";
+        }
+        
+        // Finish the headword span and line break
+        str = str + "</span><br/>";
+        
+        // Now all the word definitions, with multiple definitions
+        // separated by semicolons
+        str = str + "<span class=\"dictdef\">";
+        for(j = 0; j < dr[3].length; j++) {
+          if (j > 0) {
+            str = str + "; ";
+          }
+          str = str + htmlEsc(dr[3][j]);
+        }
+        str = str + "</span>";
+        
+        // Third line controls the character block that follows, which
+        // is hidden by default
+        str = str + "<br/>";
+        str = str + "<a href=\"javascript:void ctt_html.appear('"
+        str = str + "dyndiv" + i;
+        str = str + "');\">[&nbsp;Show&nbsp;]</a> ";
+        str = str + "<a href=\"javascript:void ctt_html.dismiss('"
+        str = str + "dyndiv" + i;
+        str = str + "');\">[&nbsp;Hide&nbsp;]</a>";
+        
+        // Finish the word block
+        str = str + "</p>";
+        
+        // Now get all the (traditional) characters as an array of
+        // codepoints
+        ca = [];
+        for(j = 0; j < dr[0].length; j++) {
+          c = dr[0].codePointAt(j);
+          ca.push(c);
+          if (c >= 0x10000) {
+            j++;
+          }
+        }
+        
+        // We will put the character table in a dynamic DIV, which is
+        // hidden by default, and the visibility controlled by the links
+        // at the end of the definition block
+        str = str + "<div style=\"display: none;\" ";
+        str = str + "id=\"dyndiv" + i + "\">";
+        
+        // Build the character table within the dynamic DIV
+        if (ca.length > 0) {
+          // Begin the table
+          str = str + "<table class=\"rtable\">";
+          
+          // Generate all the character rows
+          for(j = 0; j < ca.length; j++) {
+            // Look for codepoint record (or -1 if none)
+            cpi = ctt_main.seekCode(ca[j]);
+            
+            // Begin the row
+            str = str + "<tr>";
+            
+            // Add the character cell
+            str = str + "<td class=\"han\">";
+            str = str + String.fromCodePoint(ca[j]);
+            str = str + "</td>";
+            
+            // Add the character code with a link that types the
+            // character
+            str = str + "<td class=\"cpt\">";
+            str = str + "<a href=\"javascript:void ctt_html.typeChar("
+            str = str + (ca[j]).toString(10);
+            str = str + ");\">";
+            str = str + (ca[j]).toString(16).toLowerCase();
+            str = str + "</a>";
+            str = str + "</td>";
+            
+            // Add all the Jyutping readings
+            str = str + "<td class=\"cpr\">";
+            if (cpi >= 0) {
+              rra = canto_chars[cpi].crd;
+              if (rra.length > 0) {
+                for(k = 0; k < rra.length; k++) {
+                  if (k > 0) {
+                    str = str + ", ";
+                  }
+                  str = str + rra[k];
+                }
+                
+              } else {
+                str = str + "&nbsp;"
+              }
+              
+            } else {
+              str = str + "&nbsp";
+            }
+            str = str + "</td>";
+            
+            // Add definition, if available
+            str = str + "<td class=\"cpd\">";
+            if (cpi >= 0) {
+              if ("dfn" in canto_chars[cpi]) {
+                str = str + htmlEsc(canto_chars[cpi].dfn);
+              } else {
+                str = str + "&nbsp;";
+              }
+            } else {
+              str = str + "&nbsp;";
+            }
+            str = str + "</td>";
+            
+            // End the row
+            str = str + "</tr>";
+          }
+          
+          // End the table
+          str = str + "</table>";
+          
+        } else {
+          str = str + "(No characters)";
+        }
+        
+        // Finish the dynamic DIV
+        str = str + "</div>";
+      }
+      
+    } else {
+      // No matches
+      str = "<p>No matches found!</p>";
+    }
+    
+    // Update results
+    eResult.innerHTML = str;
+  }
+
+  /*
    * Event handler for when the document is fully loaded.
    *
    * This should be registered later.
@@ -683,7 +874,8 @@ body {
     "dismiss": dismiss,
     "typeChar": typeChar,
     "handleCodebox": handleCodebox,
-    "handleQuery": handleQuery,
+    "queryChar": queryChar,
+    "queryWord": queryWord,
     "handleLoad": handleLoad
   };
 
@@ -717,8 +909,10 @@ window.onload = ctt_html.handleLoad;
         </tr>
         <tr>
           <td id="tdQuery">
-            <input type="button" value="Query"
-              onclick="ctt_html.handleQuery()"/>
+            <input type="button" value="Character"
+              onclick="ctt_html.queryChar()"/>
+            <input type="button" value="Word"
+              onclick="ctt_html.queryWord()"/>
           </td>
         </tr>
       </table>
@@ -736,18 +930,26 @@ window.onload = ctt_html.handleLoad;
         <div id="divNotes">
           
 <!-- BEGIN Input notes documentation -->
-<p>(1) Enter <span class="hanquote">&#x72d7;</span> to look up that
-<b>character</b>.  You may only enter one character.</p>
+<p>(1) Enter <span class="tt">husky dog</span> and click
+&ldquo;Word&rdquo; to look up all <b>dictionary entries</b> that contain
+both the words <i>husky</i> and <i>dog</i>.</p>
 
-<p>(2) Enter <span class="tt">u72d7</span> or
-<span class="tt">U72D7</span> to look up <b>Unicode codepoint</b>
-U+72D7.  At least four base-16 digits must be provided.</p>
+<p>(2) Enter <span class="hanquote">&#x72d7;</span> and click
+&ldquo;Character&rdquo; to look up that <b>character</b>.  You may only
+enter one character.</p>
 
-<p>(3) Enter <span class="tt">gau2</span> to look up all characters
-using that <b>Jyutping</b>.</p>
+<p>(3) Enter <span class="tt">u72d7</span> or
+<span class="tt">U72D7</span> and click &ldquo;Character&rdquo; to look
+up <b>Unicode codepoint</b> U+72D7.  At least four base-16 digits must
+be provided.</p>
 
-<p>(4) If the input is not in one of the above three formats, then it is
-assumed to be in <b>Yale</b>.</p>
+<p>(4) Enter <span class="tt">gau2</span> and click
+&ldquo;Character&rdquo; to look up all characters using that
+<b>Jyutping</b>.</p>
+
+<p>(5) If the input is not in one of the above three formats and you
+click &ldquo;Character&rdquo;, then it is assumed to be in
+<b>Yale</b>.</p>
 
 <p><i>Yale diacritics:</i></p>
 
@@ -819,24 +1021,32 @@ which use obscure letter+diacritic combinations.</p>
 copy, paste as usual.</p>
 
 <p>(2) You can <b>search for a specific character</b> using the query
-box at the top of this page and then clicking the codepoint number in
-the results will automatically append that character to the current
-cursor position in this typing box.</p>
+box at the top of this page with the &ldquo;Character&rdquo; button and
+then clicking the codepoint number in the results will automatically
+append that character to the current cursor position in this typing
+box.</p>
 
-<p>(3) You can use the <b>codepoint entry box</b> given after this
+<p>(3) You can <b>look up words in the dictionary</b> by using the query
+box at the top of this page with the &ldquo;Word&rdquo; button.  Search
+dictionary definitions with one or more English words separated by
+spaces.  Use the &ldquo;Show&rdquo; link on the desired definition to
+see the component characters and then use the codepoint links to enter
+them into the typing box.</p>
+
+<p>(4) You can use the <b>codepoint entry box</b> given after this
 typing box to enter a sequence of Unicode codepoints in base-16 format,
 with codepoints in the entry box separated by spaces.  (The spaces will
-not appear in the output.)  Clicking the "Insert" button will then 
-insert all these codepoints at the current cursor position in this
-typing box.</p>
+not appear in the output.)  Clicking the &ldquo;Insert&rdquo; button
+will then insert all these codepoints at the current cursor position in
+this typing box.</p>
 
-<p>(4) Beneath the typing box are <b>Chinese punctuation</b> buttons,
+<p>(5) Beneath the typing box are <b>Chinese punctuation</b> buttons,
 which also have their codepoint values in the box in case you want to
 use them in the codepoint entry box.  Space is an ideographic space, and
 comma and stop as well as quotation marks are also ideographic
 versions.</p>
 
-<p>(5) You can <b>resize</b> both the typing box and the codepoint entry
+<p>(6) You can <b>resize</b> both the typing box and the codepoint entry
 box by dragging the corner.</p>
 
 <!-- END Typing notes documentation -->        
