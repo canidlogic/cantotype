@@ -138,6 +138,207 @@
   }
   
   /*
+   * Asynchronous data file loader function.
+   * 
+   * To use this, you need to have a data file index array already
+   * loaded from the index file.  This array is passed as the dfl
+   * parameter.  Each element of this array is a subarray of two
+   * elements, where the first element is a string URL of a data file to
+   * load and the second element is a string data file type that is
+   * either "char" or "word".
+   * 
+   * Each call to this function is for a data file that has just been
+   * read.  The first call to this function therefore needs the first
+   * data file to already be loaded and passed to this function.
+   * 
+   * dfi is the index within the dfl array of the data file that has
+   * just been loaded, while js is the parsed JSON representation of
+   * this data file that has just been loaded.
+   * 
+   * The f_ce, f_we, f_done, and f_err parameters are passed through
+   * from the "go" function -- see that function for further
+   * information.
+   * 
+   * After the current data file has been processed, this function will
+   * check whether there are more elements in the file array to process.
+   * If there are, the next element will be loaded and this function
+   * will recursively be called asynchronously with dfi one greater and
+   * js having the next parsed file representation.  If there are no
+   * more elements to process, then f_done() will be invoked.
+   * 
+   * Parameters:
+   * 
+   *   dfl : array - the array of data file subarrays
+   * 
+   *   dfi : integer - the index in dfl of the data file that has just
+   *   completed loading
+   * 
+   *   js : <any> - the parsed JSON representation of the data file at
+   *   index dfi within dfl
+   * 
+   *   f_ce : function - callback function that takes a single parameter
+   *   of an object storing attributes of a character
+   * 
+   *   f_we : function - callback function that takes a single parameter
+   *   of a four-element array storing a dictionary word entry
+   * 
+   *   f_done : function - callback function invoked when all records
+   *   have successfully been reported through the f_ce and f_we
+   *   callbacks
+   * 
+   *   f_err : function - callback function invoked with a single
+   *   parameter of an exception object when any of the f_ce or f_we
+   *   callbacks throws an exception, or when there is an error during
+   *   asynchronous processing
+   */
+  function loadDataFile(dfl, dfi, js, f_ce, f_we, f_done, f_err) {
+    
+    var func_name = "loadDataFile";
+    var i, j;
+    
+    // Check error parameter
+    if (typeof(f_err) !== "function") {
+      fault(func_name, 50);
+    }
+    
+    // Wrap rest of function in try-catch that redirects errors to the
+    // f_err callback
+    try {
+    
+      // Check parameters
+      if ((!(dfl instanceof Array)) ||
+          (typeof(dfi) !== "number") ||
+          (typeof(f_ce) !== "function") ||
+          (typeof(f_we) !== "function") ||
+          (typeof(f_done) !== "function") ||
+          (typeof(f_err) !== "function")) {
+        fault(func_name, 100);
+      }
+      
+      for(i = 0; i < dfl.length; i++) {
+        if (!(dfl[i] instanceof Array)) {
+          fault(func_name, 110);
+        }
+        if (dfl[i].length !== 2) {
+          fault(func_name, 120);
+        }
+        if (typeof(dfl[i][0]) !== "string") {
+          fault(func_name, 130);
+        }
+        if (typeof(dfl[i][1]) !== "string") {
+          fault(func_name, 140);
+        }
+        if ((dfl[i][1] !== "char") && (dfl[i][1] !== "word")) {
+          fault(func_name, 150);
+        }
+      }
+      
+      if (!isFinite(dfi)) {
+        fault(func_name, 160);
+      }
+      dfi = Math.floor(dfi);
+      if (!((dfi >= 0) && (dfi < dfl.length))) {
+        fault(func_name, 170);
+      }
+      
+      // Process the current file based on its type
+      if (dfl[dfi][1] === "char") {
+        // Character data file -- top-level entity must be array
+        if (!(js instanceof Array)) {
+          fault(func_name, 210);
+        }
+        
+        // Process each element
+        for(i = 0; i < js.length; i++) {
+          // Check that element is a JSON object
+          if ((typeof(js[i]) !== "object") || 
+                (js[i] instanceof Array)) {
+            fault(func_name, 220);
+          }
+          
+          // Process this character element
+          f_ce(js[i]);
+        }
+        
+      } else if (dfl[dfi][1] === "word") {
+        // Word data file -- top-level entity must be array
+        if (!(js instanceof Array)) {
+          fault(func_name, 250);
+        }
+        
+        // Process each element
+        for(i = 0; i < js.length; i++) {
+          // Check that element is a JSON array
+          if (!(js[i] instanceof Array)) {
+            fault(func_name, 260);
+          }
+          
+          // Check that array has exactly four elements
+          if (js[i].length !== 4) {
+            fault(func_name, 270);
+          }
+          
+          // Check that first two elements are strings
+          if ((typeof(js[i][0]) !== "string") ||
+                (typeof(js[i][1]) !== "string")) {
+            fault(func_name, 275);
+          }
+          
+          // Check that last two elements are arrays
+          if ((!(js[i][2] instanceof Array)) ||
+                (!(js[i][3] instanceof Array))) {
+            fault(func_name, 280);
+          }
+          
+          // Check that third element subarray contains only strings
+          for(j = 0; j < js[i][2].length; j++) {
+            if (typeof(js[i][2][j]) !== "string") {
+              fault(func_name, 284);
+            }
+          }
+          
+          // Check that fourth element subarray contains only strings
+          for(j = 0; j < js[i][3].length; j++) {
+            if (typeof(js[i][3][j]) !== "string") {
+              fault(func_name, 288);
+            }
+          }
+          
+          // Process this word element
+          f_we(js[i]);
+        }
+        
+      } else {
+        // Shouldn't happen
+        fault(func_name, 209);
+      }
+      
+      // Check whether there are further data files to process
+      if (dfi < dfl.length - 1) {
+        // More files to process, so asynchronously load next one and
+        // recursively call this function to process it
+        dfi++;
+        loadGZJSON(dfl[dfi][0], function(js_data) {
+            
+          try {
+            loadDataFile(dfl, dfi, js_data, f_ce, f_we, f_done, f_err);
+          } catch (ex) {
+            f_err(ex);
+          }
+          
+        }, f_err);
+        
+      } else {
+        // We just processed the last file, so we can finish
+        f_done();
+      }
+    
+    } catch (ex) {
+      f_err(ex);
+    }
+  }
+  
+  /*
    * Public functions
    * ================
    */
@@ -212,7 +413,76 @@
       fault(func_name, 100);
     }
     
-    // @@TODO:
+    // First we want to load the index file, function continues
+    // asynchronously in the callback
+    loadGZJSON("cantotype_index.gz", function(js_index) {
+      
+      var ca, i;
+      
+      // Wrap handling in a try-catch that reports to the f_err callback
+      // if there is any exception
+      try {
+        // Parsed JSON should be object
+        if (typeof(js_index) !== "object") {
+          fault(func_name, 200);
+        }
+
+        // Parse JSON should contain "charlist" and "wordlist"
+        // properties
+        if (!(("charlist" in js_index) && ("wordlist" in js_index))) {
+          fault(func_name, 210);
+        }
+        
+        // charlist and wordlist properties must be arrays
+        if (!((js_index.charlist instanceof Array) &&
+              (js_index.wordlist instanceof Array))) {
+          fault(func_name, 220);
+        }
+        
+        // Build a combined array that will have a two-element subarray
+        // for each element; the first element in each subarray is a URL
+        // and the second element in each subarray is a string that is
+        // either "word" or "char" for the type of data file to process
+        ca = [];
+        
+        for(i = 0; i < js_index.charlist.length; i++) {
+          if (typeof(js_index.charlist[i]) !== "string") {
+            fault(func_name, 230);
+          }
+          ca.push([js_index.charlist[i], "char"]);
+        }
+        
+        for(i = 0; i < js_index.wordlist.length; i++) {
+          if (typeof(js_index.wordlist[i]) !== "string") {
+            fault(func_name, 240);
+          }
+          ca.push([js_index.wordlist[i], "word"]);
+        }
+        
+        // Check whether there is at least one data file to process
+        if (ca.length > 0) {
+          // Asynchronously invoke the loader function with the first
+          // data file in the list
+          loadGZJSON(ca[0][0], function(js_data) {
+            
+            try {
+              loadDataFile(ca, 0, js_data, f_ce, f_we, f_done, f_err);
+            } catch (ex) {
+              f_err(ex);
+            }
+            
+          }, f_err);
+          
+        } else {
+          // No further data files to process, so invoke the done
+          // callback
+          f_done();
+        }
+      } catch (ex) {
+        f_err(ex);
+      }
+      
+    }, f_err);
   }
 
   /*
