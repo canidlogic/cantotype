@@ -7,6 +7,9 @@
  * Data loading module for Cantotype.
  * 
  * Requires pako_inflate.js to be loaded.
+ * 
+ * Requires generated configuration script cantotype_config.js to be
+ * loaded.
  */
 
 // Wrap everything in an anonymous function that we immediately invoke
@@ -89,6 +92,7 @@
     req = new XMLHttpRequest();
     req.open("GET", src);
     req.responseType = "arraybuffer";
+    req.overrideMimeType("application/octet-stream");
     
     // Function continues in callback when the request is done
     req.onreadystatechange = function() {
@@ -415,7 +419,9 @@
     
     // First we want to load the index file, function continues
     // asynchronously in the callback
-    loadGZJSON("cantotype_index.gz", function(js_index) {
+    loadGZJSON(
+        canto_config.data_base + canto_config.index_name,
+        function(js_index) {
       
       var ca, i;
       
@@ -449,14 +455,20 @@
           if (typeof(js_index.charlist[i]) !== "string") {
             fault(func_name, 230);
           }
-          ca.push([js_index.charlist[i], "char"]);
+          ca.push([
+            canto_config.data_base + js_index.charlist[i],
+            "char"
+          ]);
         }
         
         for(i = 0; i < js_index.wordlist.length; i++) {
           if (typeof(js_index.wordlist[i]) !== "string") {
             fault(func_name, 240);
           }
-          ca.push([js_index.wordlist[i], "word"]);
+          ca.push([
+            canto_config.data_base + js_index.wordlist[i],
+            "word"
+          ]);
         }
         
         // Check whether there is at least one data file to process
