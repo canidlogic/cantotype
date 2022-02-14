@@ -1130,23 +1130,12 @@ for my $k (@cmap_keys) {
   push @car, ($cmap{$k});
 }
 
-# Encode the @car array into JSON
-#
-my $car_json = encode_json(\@car);
-
 # Import the CC-CEDICT dictionary
 #
 my @dar;
 import_dictionary(\@dar, $script_param{'cedict'});
 
-# Encode the @dar dictionary array into JSON
-#
-my $dar_json = encode_json(\@dar);
-
-# Print the completed JavaScript to output
-#
-print "var canto_chars = $car_json;\n";
-print "var canto_words = $dar_json;\n";
+# @@TODO:
 
 =head1 AUTHOR
 
