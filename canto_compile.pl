@@ -896,36 +896,199 @@ sub import_dictionary {
 # Program entrypoint
 # ==================
 
-# Check that we got three parameters
+# Define a hash that will store parameters we receive on the command
+# line
 #
-($#ARGV == 2) or die "Wrong number of parameters, stopped";
+my %script_param;
 
-# Store the parameters
+# Parse the command-line parameters and add to %script_param
 #
-my $path_hkscs  = $ARGV[0];
-my $path_unihan = $ARGV[1];
-my $path_dict   = $ARGV[2];
+for(my $i = 0; $i <= $#ARGV; $i++) {
+  # Get parameter name
+  my $p = $ARGV[$i];
+  
+  # Handle parameter
+  if ($p eq "-hkscs") { # ----------------------------------------------
+    # Make sure at least one extra parameter
+    ($i < $#ARGV) or die "-hkscs requires parameter, stopped";
+    
+    # Advance to next parameter and get it
+    $i++;
+    $p = $ARGV[$i];
+    
+    # Check that parameter not already defined
+    (not exists $script_param{'hkscs'}) or 
+      die "-hkscs defined twice, stopped";
+    
+    # Check that file exists
+    (-f $p) or die "Can't find file '$p', stopped";
+    
+    # Store parameter
+    $script_param{'hkscs'} = "$p";
+    
+  } elsif ($p eq "-unihan") { # ----------------------------------------
+    # Make sure at least one extra parameter
+    ($i < $#ARGV) or die "-unihan requires parameter, stopped";
+    
+    # Advance to next parameter and get it
+    $i++;
+    $p = $ARGV[$i];
+    
+    # Check that parameter not already defined
+    (not exists $script_param{'unihan'}) or 
+      die "-unihan defined twice, stopped";
+    
+    # Check that directory exists
+    (-d $p) or die "Can't find directory '$p', stopped";
+    
+    # Store parameter
+    $script_param{'unihan'} = "$p";
+    
+  } elsif ($p eq "-cedict") { # ----------------------------------------
+    # Make sure at least one extra parameter
+    ($i < $#ARGV) or die "-cedict requires parameter, stopped";
+    
+    # Advance to next parameter and get it
+    $i++;
+    $p = $ARGV[$i];
+    
+    # Check that parameter not already defined
+    (not exists $script_param{'cedict'}) or 
+      die "-cedict defined twice, stopped";
+    
+    # Check that file exists
+    (-f $p) or die "Can't find file '$p', stopped";
+    
+    # Store parameter
+    $script_param{'cedict'} = "$p";
+    
+  } elsif ($p eq "-base") { # ------------------------------------------
+    # Make sure at least one extra parameter
+    ($i < $#ARGV) or die "-base requires parameter, stopped";
+    
+    # Advance to next parameter and get it
+    $i++;
+    $p = $ARGV[$i];
+    
+    # Check that parameter not already defined
+    (not exists $script_param{'base'}) or 
+      die "-base defined twice, stopped";
+    
+    # Store parameter
+    $script_param{'base'} = "$p";
+    
+  } elsif ($p eq "-outdir") { # ----------------------------------------
+    # Make sure at least one extra parameter
+    ($i < $#ARGV) or die "-outdir requires parameter, stopped";
+    
+    # Advance to next parameter and get it
+    $i++;
+    $p = $ARGV[$i];
+    
+    # Check that parameter not already defined
+    (not exists $script_param{'outdir'}) or 
+      die "-outdir defined twice, stopped";
+    
+    # Check that directory exists
+    (-d $p) or die "Can't find directory '$p', stopped";
+    
+    # Store parameter
+    $script_param{'outdir'} = "$p";
+    
+  } elsif ($p eq "-csplit") { # ----------------------------------------
+    # Make sure at least one extra parameter
+    ($i < $#ARGV) or die "-csplit requires parameter, stopped";
+    
+    # Advance to next parameter and get it
+    $i++;
+    $p = $ARGV[$i];
+    
+    # Check that parameter not already defined
+    (not exists $script_param{'csplit'}) or 
+      die "-csplit defined twice, stopped";
+    
+    # Check format
+    ($p =~ /^[1-9][0-9]*$/) or die "Invalid -csplit value, stopped";
+    
+    # Convert to integer and check range
+    $p = int($p);
+    (($p > 0) and ($p < 1000)) or
+      die "-csplit value out of range, stopped";
+    
+    # Store parameter (as integer)
+    $script_param{'csplit'} = $p;
+    
+  } elsif ($p eq "-wsplit") { # ----------------------------------------
+    # Make sure at least one extra parameter
+    ($i < $#ARGV) or die "-wsplit requires parameter, stopped";
+    
+    # Advance to next parameter and get it
+    $i++;
+    $p = $ARGV[$i];
+    
+    # Check that parameter not already defined
+    (not exists $script_param{'wsplit'}) or 
+      die "-wsplit defined twice, stopped";
+    
+    # Check format
+    ($p =~ /^[1-9][0-9]*$/) or die "Invalid -wsplit value, stopped";
+    
+    # Convert to integer and check range
+    $p = int($p);
+    (($p > 0) and ($p < 1000)) or
+      die "-wsplit value out of range, stopped";
+    
+    # Store parameter (as integer)
+    $script_param{'wsplit'} = $p;
+    
+  } else { # -----------------------------------------------------------
+    die "Unrecognized parameter '$p', stopped";
+  }
+}
 
-# Check that paths exist
+# Define default values of csplit and wsplit if they were not explicitly
+# passed to the script
 #
-(-f $path_hkscs) or die "Can't find file '$path_hkscs', stopped";
-(-d $path_unihan) or die "Can't find directory '$path_unihan', stopped";
-(-f $path_dict) or die "Can't find file '$path_dict', stopped";
+if (not exists $script_param{'csplit'}) {
+  $script_param{'csplit'} = 1;
+}
+if (not exists $script_param{'wsplit'}) {
+  $script_param{'wsplit'} = 1;
+}
 
-# Define Unihan data file paths
+# Make sure all necessary parameters are now defined
 #
-my $unihan_irg   = subfile($path_unihan, "Unihan_IRGSources.txt");
-my $unihan_other = subfile($path_unihan, "Unihan_OtherMappings.txt");
-my $unihan_radst = subfile($path_unihan,
-                              "Unihan_RadicalStrokeCounts.txt");
-my $unihan_read  = subfile($path_unihan, "Unihan_Readings.txt");
+for my $p ('hkscs', 'unihan', 'cedict', 'base',
+            'outdir', 'csplit', 'wsplit') {
+  (exists $script_param{$p}) or
+    die "Missing parameter -$p, stopped";
+}
+
+# Derive Unihan data file paths and add them to the script parameters
+#
+$script_param{'unihan_irg'}   = subfile(
+                                  $script_param{'unihan'},
+                                  "Unihan_IRGSources.txt");
+$script_param{'unihan_other'} = subfile(
+                                  $script_param{'unihan'},
+                                  "Unihan_OtherMappings.txt");
+$script_param{'unihan_radst'} = subfile(
+                                  $script_param{'unihan'},
+                                  "Unihan_RadicalStrokeCounts.txt");
+$script_param{'unihan_read'}  = subfile(
+                                  $script_param{'unihan'},
+                                  "Unihan_Readings.txt");
 
 # Check for existence of Unihan data files
 #
-(-f $unihan_irg) or die "Can't find file '$unihan_irg', stopped";
-(-f $unihan_other) or die "Can't find file '$unihan_other', stopped";
-(-f $unihan_radst) or die "Can't find file '$unihan_radst', stopped";
-(-f $unihan_read) or die "Can't file file '$unihan_read', stopped";
+(-f $script_param{'unihan_irg'}) or
+  die "Can't find file '$script_param{'unihan_irg'}', stopped";
+(-f $script_param{'unihan_other'}) or
+  die "Can't find file '$script_param{'unihan_other'}', stopped";
+(-f $script_param{'unihan_radst'}) or
+  die "Can't find file '$script_param{'unihan_radst'}', stopped";
+(-f $script_param{'unihan_read'}) or
+  die "Can't file file '$script_param{'unihan_read'}', stopped";
 
 # Start with an empty hash, which will map decimal integer codepoints to
 # array references containing Jyutping romanizations
@@ -935,17 +1098,17 @@ my %cmap;
 # First, grab all the core Big5 codepoints and map them to empty array
 # references for now
 #
-grab_big5(\%cmap, $unihan_other);
+grab_big5(\%cmap, $script_param{'unihan_other'});
 
 # Second, add all Cantonese readings to those codepoints, using the
 # Unihan database
 #
-apply_canto(\%cmap, $unihan_read);
+apply_canto(\%cmap, $script_param{'unihan_read'});
 
 # Third, add any additional Cantonese codepoints and readings from the
 # HKSCS supplement file
 #
-apply_hkscs(\%cmap, $path_hkscs);
+apply_hkscs(\%cmap, $script_param{'hkscs'});
 
 # Apply corrections to %cmap and upgrade to have objects for each of the
 # codepoints
@@ -955,7 +1118,7 @@ upgrade_cmap(\%cmap);
 
 # Add any kDefinition fields that we find in Unihan
 #
-add_defns(\%cmap, $unihan_read);
+add_defns(\%cmap, $script_param{'unihan_read'});
 
 # Convert the %cmap into an array @car
 #
@@ -974,7 +1137,7 @@ my $car_json = encode_json(\@car);
 # Import the CC-CEDICT dictionary
 #
 my @dar;
-import_dictionary(\@dar, $path_dict);
+import_dictionary(\@dar, $script_param{'cedict'});
 
 # Encode the @dar dictionary array into JSON
 #
