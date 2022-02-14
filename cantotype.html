@@ -191,11 +191,26 @@ body {
       </style>
     </noscript>
     
-    <!-- Load canto_chars and canto_words -->
-    <script defer src="cantotype_table.js"></script>
+    <!-- Define the globals canto_chars and canto_words here -->
+    <script>
+
+/*
+ * These will be filled in during the loading procedure.
+ */
+var canto_chars = [];
+var canto_words = [];
+
+    </script>
     
-    <!-- Load main program module -->
+    <!-- Load configuration script -->
+    <script src="cantotype_config.js"></script>
+    
+    <!-- Load Pako library -->
+    <script src="pako_inflate.js"></script>
+    
+    <!-- Load modules -->
     <script src="cantotype.js"></script>
+    <script src="cantotype_load.js"></script>
     
     <!-- Embedded script is for presentation tier functionality -->
     <script>
@@ -879,6 +894,33 @@ body {
     }
     e.style.display = "block";
   }
+  
+  /*
+   * Kickstart procedure will asynchronously load the canto_chars and
+   * canto_words variables from the data files and then 
+   */
+  function kickstart() {
+    ctt_load.go(
+      function(ce) {
+        // Add character entry
+        canto_chars.push(ce);
+      },
+      function(we) {
+        // Add word entry
+        canto_words.push(we);
+      },
+      function() {
+        // Loading complete, so go to main loader now
+        handleLoad();
+      },
+      function(ex) {
+        // Something went wrong during loading
+        var e = document.getElementById("divSplash");
+        if (e != null) {
+          e.innerHTML = "ERROR: Data loading failed!";
+        }
+      });
+  }
 
   /*
    * Export declarations
@@ -893,13 +935,14 @@ body {
     "handleCodebox": handleCodebox,
     "queryChar": queryChar,
     "queryWord": queryWord,
-    "handleLoad": handleLoad
+    "handleLoad": handleLoad,
+    "kickstart": kickstart
   };
 
 }());
 
 // Register the document loading event
-window.onload = ctt_html.handleLoad;
+window.onload = ctt_html.kickstart;
 
     </script>
   </head>
