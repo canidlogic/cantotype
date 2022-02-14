@@ -6,6 +6,7 @@ use warnings FATAL => "utf8";
 # Non-core dependencies
 #
 use JSON::Tiny qw(decode_json encode_json);
+use PerlIO::gzip;
 
 # Core dependencies
 #
@@ -1135,7 +1136,145 @@ for my $k (@cmap_keys) {
 my @dar;
 import_dictionary(\@dar, $script_param{'cedict'});
 
-# @@TODO:
+# Make sure neither table is empty
+#
+($#car > 0) or die "Character table is empty, stopped";
+($#dar > 0) or die "Word table is empty, stopped";
+
+# If the character split value is larger than the number of character
+# records, set it to the number of character records
+#
+if ($script_param{'csplit'} > $#car + 1) {
+  $script_param{'csplit'} = $#car + 1;
+}
+
+# If the word split value is larger than the number of word records, set
+# it to the number of word records
+#
+if ($script_param{'wsplit'} > $#dar + 1) {
+  $script_param{'wsplit'} = $#dar + 1;
+}
+
+# Get the volume and directory components to the output directory
+#
+(my $outdir_vol, my $outdir_path, undef) =
+  File::Spec->splitpath($script_param{'outdir'}, 1);
+
+# Generate the paths and URLs to all the character data files and all
+# the word data files; each array element is a subarray where the first
+# element of the subarray is the path to the file to generate on the
+# local file system and the second element of the subarray is the URL to
+# the file that will be recorded in the data file index
+# 
+my @car_files;
+my @dar_files;
+
+for(my $i = 1; $i <= $script_param{'csplit'}; $i++) {
+  my $fname = sprintf("cantotype_data_c%03d.gz", $i);
+  
+  push @car_files, ([
+    File::Spec->catpath($outdir_vol, $outdir_path, $fname),
+    $script_param{'base'} . $fname
+  ]);
+}
+
+for(my $i = 1; $i <= $script_param{'wsplit'}; $i++) {
+  my $fname = sprintf("cantotype_data_w%03d.gz", $i);
+  
+  push @dar_files, ([
+    File::Spec->catpath($outdir_vol, $outdir_path, $fname),
+    $script_param{'base'} . $fname
+  ]);
+}
+
+# Generate the data file index object
+#
+my %dfix;
+
+$dfix{'charlist'} = [];
+$dfix{'wordlist'} = [];
+
+for(my $i = 0; $i < $script_param{'csplit'}; $i++) {
+  push @{$dfix{'charlist'}}, ($car_files[$i][1]);
+}
+for(my $i = 0; $i < $script_param{'wsplit'}; $i++) {
+  push @{$dfix{'wordlist'}}, ($dar_files[$i][1]);
+}
+
+# Encode the data file index object to JSON and then write it to the
+# index file with gzip compression
+#
+my $dfix_json = encode_json(\%dfix);
+open(
+    my $fhi, "> :gzip",
+    File::Spec->catpath(
+        $outdir_vol, $outdir_path, "cantotype_data_index.gz"))
+  or die "Can't create 'cantotype_data_index.gz' for writing, stopped";
+
+print { $fhi } "$dfix_json\n";
+close($fhi);
+
+# Generate all the character data parts and write to output directory
+#
+my $per_part = int(($#car + 1) / $script_param{'csplit'});
+for(my $i = 0; $i < $script_param{'csplit'}; $i++) {
+  
+  # Compute the starting array index of this part
+  my $start_i = $per_part * $i;
+  
+  # Usually, the number of records in a part is equal to $per_part, but
+  # in the very last part, it is equal to all remaining records
+  my $r_count = $per_part;
+  if ($i >= $script_param{'csplit'} - 1) {
+    $r_count = ($#car + 1) - $start_i;
+  }
+  ($r_count > 0) or die "Error splitting parts, stopped";
+  
+  # Grab the subset of records we are putting into this part
+  my $last_i = $start_i + $r_count - 1;
+  my @rss = @car[$start_i .. $last_i];
+
+  # Encode subset into JSON
+  my $jss = encode_json(\@rss);
+  
+  # Write the JSON to the data file, using gzip compression
+  open(my $fhp, "> :gzip", $car_files[$i][0]) or
+    die "Can't create '$car_files[$i][0]' for writing, stopped";
+  
+  print { $fhp } "$jss\n";
+  close($fhp);
+}
+
+# Generate all the word data parts and write to output directory
+#
+$per_part = int(($#dar + 1) / $script_param{'wsplit'});
+for(my $i = 0; $i < $script_param{'wsplit'}; $i++) {
+  
+  # Compute the starting array index of this part
+  my $start_i = $per_part * $i;
+  
+  # Usually, the number of records in a part is equal to $per_part, but
+  # in the very last part, it is equal to all remaining records
+  my $r_count = $per_part;
+  if ($i >= $script_param{'wsplit'} - 1) {
+    $r_count = ($#dar + 1) - $start_i;
+  }
+  ($r_count > 0) or die "Error splitting parts, stopped";
+  
+  # Grab the subset of records we are putting into this part
+  my $last_i = $start_i + $r_count - 1;
+  my @rss = @dar[$start_i .. $last_i];
+
+  # Encode subset into JSON
+  my $jss = encode_json(\@rss);
+  
+  # Write the JSON to the data file, using gzip compression
+  open(my $fhp, "> :gzip", $dar_files[$i][0]) or
+    die "Can't create '$dar_files[$i][0]' for writing, stopped";
+  
+  print { $fhp } "$jss\n";
+  close($fhp);
+}
 
 =head1 AUTHOR
 
