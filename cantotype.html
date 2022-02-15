@@ -560,13 +560,162 @@ var canto_words = [];
   }
 
   /*
+   * Given a set of character results, write them to the result DIV.
+   *
+   * The given da parameter must be an object that has parameters
+   * "clist" and "ctable".  The "clist" is an array that has array
+   * indices into the "ctable" array.  The "clist" determines the order
+   * in which characters are displayed in the results.  The "ctable"
+   * stores the actual character data to display.  The elements of the
+   * "ctable" are objects having the following properties:
+   *
+   *   "cpv" - numeric integer codepoint of the character
+   *   "crd" - array of Jyutping reading strings of the character
+   *   "dfn" - string for English gloss, or property not defined if
+   *           gloss not available
+   *
+   * Parameters:
+   *
+   *   da : object - the character results to list
+   */
+  function listCharResults(da) {
+    
+    var func_name = "listCharResults";
+    var str, i, j, ce, eResult;
+    
+    // Check parameter
+    if (typeof(da) !== "object") {
+      fault(func_name, 100);
+    }
+    if ((!("clist" in da)) || (!("ctable" in da))) {
+      fault(func_name, 110);
+    }
+    if ((!(da.clist instanceof Array)) ||
+        (!(da.ctable instanceof Array))) {
+      fault(func_name, 120);
+    }
+    for(i = 0; i < da.clist.length; i++) {
+      if (typeof(da.clist[i]) !== "number") {
+        fault(func_name, 130);
+      }
+      if (!isFinite(da.clist[i])) {
+        fault(func_name, 140);
+      }
+      da.clist[i] = Math.floor(da.clist[i]);
+      if ((da.clist[i] < 0) || (da.clist[i] >= da.ctable.length)) {
+        fault(func_name, 150);
+      }
+    }
+    for(i = 0; i < da.ctable.length; i++) {
+      if (typeof(da.ctable[i]) !== "object") {
+        fault(func_name, 160);
+      }
+      if ((!("cpv" in da.ctable[i])) ||
+          (!("crd" in da.ctable[i]))) {
+        fault(func_name, 170);
+      }
+      if (typeof(da.ctable[i].cpv) !== "number") {
+        fault(func_name, 180);
+      }
+      if (!isFinite(da.ctable[i].cpv)) {
+        fault(func_name, 190);
+      }
+      da.ctable[i].cpv = Math.floor(da.ctable[i].cpv);
+      if ((da.ctable[i].cpv < 0) || (da.ctable[i].cpv > 0x10ffff) ||
+            ((da.ctable[i].cpv >= 0xd800) &&
+              (da.ctable[i].cpv <= 0xdfff))) {
+        fault(func_name, 200);
+      }
+      if (!(da.ctable[i].crd instanceof Array)) {
+        fault(func_name, 210);
+      }
+      for(j = 0; j < da.ctable[i].crd.length; j++) {
+        if (typeof(da.ctable[i].crd[j]) !== "string") {
+          fault(func_name, 220);
+        }
+      }
+      if ("dfn" in da.ctable[i]) {
+        if (typeof(da.ctable[i].dfn) !== "string") {
+          fault(func_name, 230);
+        }
+      }
+    }
+    
+    // Get the result DIV
+    eResult = document.getElementById("divResults");
+    if (eResult == null) {
+      fault(func_name, 300);
+    }
+    
+    // Build the HTML results from the object
+    if (da.clist.length > 0) {
+      // At least one result, so begin results table
+      str = "<table class=\"rtable\">";
+      
+      // Add each result
+      for(i = 0; i < da.clist.length; i++) {
+        // Get the character entry
+        ce = da.ctable[da.clist[i]];
+        
+        // Add character and codepoint, with codepoint being a link that
+        // types the character
+        str = str + "<tr><td class=\"han\">";
+        str = str + String.fromCodePoint(ce.cpv);
+        str = str + "</td><td class=\"cpt\">";
+        str = str + "<a href=\"javascript:void ctt_html.typeChar("
+        str = str + (ce.cpv).toString(10);
+        str = str + ");\">";
+        str = str + (ce.cpv).toString(16).toLowerCase();
+        str = str + "</a>";
+        
+        // Add all readings
+        str = str + "</td><td class=\"cpr\">";
+        if (ce.crd.length > 0) {
+          // At least one reading to add
+          for(j = 0; j < ce.crd.length; j++) {
+            if (j > 0) {
+              str = str + ", ";
+            }
+            str = str + ce.crd[j];
+          }
+          
+        } else {
+          // No readings
+          str = str + "&nbsp;"
+        }
+        
+        // Add definition, if available
+        str = str + "</td><td class=\"cpd\">";
+        if ("dfn" in ce) {
+          str = str + htmlEsc(ce.dfn);
+        } else {
+          str = str + "&nbsp;";
+        }
+        
+        // Finish row
+        str = str + "</td></tr>";
+      }
+      
+      // End results table
+      str = str + "</table>";
+      
+    } else {
+      // No results
+      str = "<p>No matches found!</p>";
+    }
+    
+    // Update results
+    eResult.innerHTML = str;
+  }
+
+  /*
    * Event handler for when the query character button is clicked.
    */
   function queryChar() {
     
     var func_name = "queryChar";
     var e, eResult;
-    var q, i, j, k, str, ra, m, cpa, cpi, rra, cph;
+    var q, cpa, cpi, ce, da, i;
     
     // Get the result DIV
     eResult = document.getElementById("divResults");
@@ -587,77 +736,26 @@ var canto_words = [];
     // Perform the character query
     cpa = ctt_main.charQuery(q);
     
-    // Build result string
-    str = "";
-    if (cpa.length > 0) {
-      // Matches found, so begin results table
-      str = "<table class=\"rtable\">";
+    // Build the result object
+    da = {"clist": [], "ctable": []};
+    for(i = 0; i < cpa.length; i++) {
+      // Look for codepoint record (or -1 if none)
+      cpi = ctt_main.seekCode(cpa[i]);
       
-      // Add each result
-      for(i = 0; i < cpa.length; i++) {
-        // Get lowercase base-16 of character
-        cph = (cpa[i]).toString(16).toLowerCase();
-        
-        // Look for codepoint record (or -1 if none)
-        cpi = ctt_main.seekCode(cpa[i]);
-        
-        // Add character and codepoint, with codepoint being a link that
-        // types the character
-        str = str + "<tr><td class=\"han\">";
-        str = str + String.fromCodePoint(cpa[i]);
-        str = str + "</td><td class=\"cpt\">";
-        str = str + "<a href=\"javascript:void ctt_html.typeChar("
-        str = str + (cpa[i]).toString(10);
-        str = str + ");\">";
-        str = str + cph;
-        str = str + "</a>";
-        
-        // Add all readings
-        str = str + "</td><td class=\"cpr\">";
-        if (cpi >= 0) {
-          rra = canto_chars[cpi].crd;
-          if (rra.length > 0) {
-            for(k = 0; k < rra.length; k++) {
-              if (k > 0) {
-                str = str + ", ";
-              }
-              str = str + rra[k];
-            }
-            
-          } else {
-            str = str + "&nbsp;"
-          }
-          
-        } else {
-          str = str + "&nbsp";
-        }
-        
-        // Add definition, if available
-        str = str + "</td><td class=\"cpd\">";
-        if (cpi >= 0) {
-          if ("dfn" in canto_chars[cpi]) {
-            str = str + htmlEsc(canto_chars[cpi].dfn);
-          } else {
-            str = str + "&nbsp;";
-          }
-        } else {
-          str = str + "&nbsp;";
-        }
-        
-        // Finish row
-        str = str + "</td></tr>";
+      // Get the character entry
+      if (cpi >= 0) {
+        ce = canto_chars[cpi];
+      } else {
+        ce = {"cpv": cpa[i], "crd": []};
       }
       
-      // End results table
-      str = str + "</table>";
-
-    } else {
-      // No matches
-      str = "<p>No matches found!</p>";
+      // Add to results
+      da.clist.push(i);
+      da.ctable.push(ce);
     }
-
-    // Update results
-    eResult.innerHTML = str;
+    
+    // Print results
+    listCharResults(da);
   }
 
   /*
@@ -933,6 +1031,7 @@ var canto_words = [];
     "dismiss": dismiss,
     "typeChar": typeChar,
     "handleCodebox": handleCodebox,
+    "listCharResults": listCharResults,
     "queryChar": queryChar,
     "queryWord": queryWord,
     "handleLoad": handleLoad,
