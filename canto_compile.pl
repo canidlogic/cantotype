@@ -570,6 +570,35 @@ sub apply_canto {
   close($fhr);  
 }
 
+# Given a reference to a %cmap hash that has been initialized, drop all
+# records that do not have at least one Cantonese reading.
+#
+# Parameters:
+#
+#   1 : hash ref - reference to the %cmap
+#
+sub only_canto {
+  # Check parameter count
+  ($#_ == 0) or die "Wrong number of parameters, stopped";
+  
+  # Get parameter and check type
+  my $cm        = shift;
+  (ref($cm) eq 'HASH') or die "Wrong parameter type, stopped";
+
+  # Run through all keys and build a list of keys that will be dropped
+  my @droplist;
+  for my $k (keys %$cm) {
+    if (scalar(@{$cm->{$k}}) < 1) {
+      push @droplist, ($k);
+    }
+  }
+  
+  # Delete all entries from the drop list
+  for my $k (@droplist) {
+    delete $cm->{$k};
+  }
+}
+
 # Given a reference to a %cmap hash, add extra Cantonese readings and
 # codepoints from the HKSCS supplement.
 #
@@ -1082,7 +1111,12 @@ grab_big5(\%cmap, $script_param{'unihan_other'});
 #
 apply_canto(\%cmap, $script_param{'unihan_read'});
 
-# Third, add any additional Cantonese codepoints and readings from the
+# Third, drop any codepoints that do not have at least one Cantonese
+# reading
+#
+only_canto(\%cmap);
+
+# Fourth, add any additional Cantonese codepoints and readings from the
 # HKSCS supplement file
 #
 apply_hkscs(\%cmap, $script_param{'hkscs'});
