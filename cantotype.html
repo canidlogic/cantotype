@@ -574,6 +574,9 @@ var canto_words = [];
    *   "dfn" - string for English gloss, or property not defined if
    *           gloss not available
    *
+   * Note that the "ctable" format is the exact same as the "ctable"
+   * format used in listWordResults.
+   *
    * Parameters:
    *
    *   da : object - the character results to list
@@ -709,6 +712,266 @@ var canto_words = [];
   }
 
   /*
+   * Given a set of word results, write them to the result DIV.
+   *
+   * The given da parameter must be an object that has parameters
+   * "wlist" and "ctable".  
+   *
+   * The "wlist" is an array where each element is an object
+   * representing a located dictionary entry.  Dictionary entry objects
+   * have the following properties:
+   *
+   *   "tc" - traditional character string
+   *   "sc" - simplified character string
+   *   "py" - array of Pinyin syllable strings
+   *   "df" - array of English gloss strings (might include Chinese!)
+   *   "cc" - array of character code indices
+   *
+   * The "cc" array contains array indices into the "ctable" for the
+   * component characters that should be displayed for this entry.
+   *
+   * The "ctable" stores the character data for component characters.
+   * The elements of the "ctable" are objects having the following
+   * properties:
+   *
+   *   "cpv" - numeric integer codepoint of the character
+   *   "crd" - array of Jyutping reading strings of the character
+   *   "dfn" - string for English gloss, or property not defined if
+   *           gloss not available
+   *
+   * Note that the "ctable" format is the exact same as the "ctable"
+   * format used in listWordResults.
+   *
+   * Parameters:
+   *
+   *   da : object - the word results to list
+   */
+  function listWordResults(da) {
+    
+    var func_name = "listWordResults";
+    var str, i, j, k, ce, eResult;
+    
+    // Check parameter
+    if (typeof(da) !== "object") {
+      fault(func_name, 100);
+    }
+    if ((!("wlist" in da)) || (!("ctable" in da))) {
+      fault(func_name, 110);
+    }
+    if ((!(da.wlist instanceof Array)) ||
+        (!(da.ctable instanceof Array))) {
+      fault(func_name, 120);
+    }
+    for(i = 0; i < da.wlist.length; i++) {
+      if (typeof(da.wlist[i]) !== "object") {
+        fault(func_name, 130);
+      }
+      if ((!("tc" in da.wlist[i])) ||
+          (!("sc" in da.wlist[i])) ||
+          (!("py" in da.wlist[i])) ||
+          (!("df" in da.wlist[i])) ||
+          (!("cc" in da.wlist[i]))) {
+        fault(func_name, 132);
+      }
+      if ((typeof(da.wlist[i].tc) !== "string") ||
+          (typeof(da.wlist[i].sc) !== "string") ||
+          (!(da.wlist[i].py instanceof Array)) ||
+          (!(da.wlist[i].df instanceof Array)) ||
+          (!(da.wlist[i].cc instanceof Array))) {
+        fault(func_name, 134);
+      }
+      for(j = 0; j < da.wlist[i].py.length; j++) {
+        if (typeof(da.wlist[i].py[j]) !== "string") {
+          fault(func_name, 136);
+        }
+      }
+      for(j = 0; j < da.wlist[i].df.length; j++) {
+        if (typeof(da.wlist[i].df[j]) !== "string") {
+          fault(func_name, 137);
+        }
+      }
+      for(j = 0; j < da.wlist[i].cc.length; j++) {
+        if (typeof(da.wlist[i].cc[j]) !== "number") {
+          fault(func_name, 138);
+        }
+        if (!isFinite(da.wlist[i].cc[j])) {
+          fault(func_name, 140);
+        }
+        da.wlist[i].cc[j] = Math.floor(da.wlist[i].cc[j]);
+        if ((da.wlist[i].cc[j] < 0) ||
+              (da.wlist[i].cc[j] >= da.ctable.length)) {
+          fault(func_name, 150);
+        }
+      }
+    }
+    for(i = 0; i < da.ctable.length; i++) {
+      if (typeof(da.ctable[i]) !== "object") {
+        fault(func_name, 160);
+      }
+      if ((!("cpv" in da.ctable[i])) ||
+          (!("crd" in da.ctable[i]))) {
+        fault(func_name, 170);
+      }
+      if (typeof(da.ctable[i].cpv) !== "number") {
+        fault(func_name, 180);
+      }
+      if (!isFinite(da.ctable[i].cpv)) {
+        fault(func_name, 190);
+      }
+      da.ctable[i].cpv = Math.floor(da.ctable[i].cpv);
+      if ((da.ctable[i].cpv < 0) || (da.ctable[i].cpv > 0x10ffff) ||
+            ((da.ctable[i].cpv >= 0xd800) &&
+              (da.ctable[i].cpv <= 0xdfff))) {
+        fault(func_name, 200);
+      }
+      if (!(da.ctable[i].crd instanceof Array)) {
+        fault(func_name, 210);
+      }
+      for(j = 0; j < da.ctable[i].crd.length; j++) {
+        if (typeof(da.ctable[i].crd[j]) !== "string") {
+          fault(func_name, 220);
+        }
+      }
+      if ("dfn" in da.ctable[i]) {
+        if (typeof(da.ctable[i].dfn) !== "string") {
+          fault(func_name, 230);
+        }
+      }
+    }
+    
+    // Get the result DIV
+    eResult = document.getElementById("divResults");
+    if (eResult == null) {
+      fault(func_name, 300);
+    }
+    
+    // Build HTML results string
+    str = "";
+    if (da.wlist.length > 0) {
+      // Matches found, so add each result
+      for(i = 0; i < da.wlist.length; i++) {
+        
+        // First comes the headword as a traditional character
+        str = str + "<p class=\"dictp\">"
+        str = str + "<span class=\"dicthw\">";
+        str = str + htmlEsc(da.wlist[i].tc);
+        
+        // If the simplified character is different, put it in
+        // parentheses
+        if (da.wlist[i].sc !== da.wlist[i].tc) {
+          str = str + " (" + htmlEsc(da.wlist[i].sc) + ")";
+        }
+        
+        // Finish the headword span and line break
+        str = str + "</span><br/>";
+        
+        // Now all the word definitions, with multiple definitions
+        // separated by semicolons
+        str = str + "<span class=\"dictdef\">";
+        for(j = 0; j < da.wlist[i].df.length; j++) {
+          if (j > 0) {
+            str = str + "; ";
+          }
+          str = str + htmlEsc(da.wlist[i].df[j]);
+        }
+        str = str + "</span>";
+        
+        // Third line controls the character block that follows, which
+        // is hidden by default
+        str = str + "<br/>";
+        str = str + "<a href=\"javascript:void ctt_html.appear('"
+        str = str + "dyndiv" + i;
+        str = str + "');\">[&nbsp;Show&nbsp;]</a> ";
+        str = str + "<a href=\"javascript:void ctt_html.dismiss('"
+        str = str + "dyndiv" + i;
+        str = str + "');\">[&nbsp;Hide&nbsp;]</a>";
+        
+        // Finish the word block
+        str = str + "</p>";
+        
+        // We will put the character table in a dynamic DIV, which is
+        // hidden by default, and the visibility controlled by the links
+        // at the end of the definition block
+        str = str + "<div style=\"display: none;\" ";
+        str = str + "id=\"dyndiv" + i + "\">";
+        
+        // Build the character table within the dynamic DIV
+        if (da.wlist[i].cc.length > 0) {
+          // Begin the table
+          str = str + "<table class=\"rtable\">";
+          
+          // Generate all the character rows
+          for(j = 0; j < da.wlist[i].cc.length; j++) {
+            // Get the character information
+            ce = da.ctable[da.wlist[i].cc[j]];
+            
+            // Begin the row
+            str = str + "<tr>";
+            
+            // Add the character cell
+            str = str + "<td class=\"han\">";
+            str = str + String.fromCodePoint(ce.cpv);
+            str = str + "</td>";
+            
+            // Add the character code with a link that types the
+            // character
+            str = str + "<td class=\"cpt\">";
+            str = str + "<a href=\"javascript:void ctt_html.typeChar("
+            str = str + ce.cpv.toString(10);
+            str = str + ");\">";
+            str = str + ce.cpv.toString(16).toLowerCase();
+            str = str + "</a>";
+            str = str + "</td>";
+            
+            // Add all the Jyutping readings
+            str = str + "<td class=\"cpr\">";
+            if (ce.crd.length > 0) {
+              for(k = 0; k < ce.crd.length; k++) {
+                if (k > 0) {
+                  str = str + ", ";
+                }
+                str = str + ce.crd[k];
+              }
+            } else {
+              str = str + "&nbsp;"
+            }
+            str = str + "</td>";
+            
+            // Add definition, if available
+            str = str + "<td class=\"cpd\">";
+            if ("dfn" in ce) {
+              str = str + htmlEsc(ce.dfn);
+            } else {
+              str = str + "&nbsp;";
+            }
+            str = str + "</td>";
+            
+            // End the row
+            str = str + "</tr>";
+          }
+          
+          // End the table
+          str = str + "</table>";
+          
+        } else {
+          // No component characters
+          str = str + "(No characters)";
+        }
+        
+        // Finish the dynamic DIV
+        str = str + "</div>";
+      }
+      
+    } else {
+      // No matches
+      str = "<p>No matches found!</p>";
+    }
+    
+    // Update results
+    eResult.innerHTML = str;
+  }
+
+  /*
    * Event handler for when the query character button is clicked.
    */
   function queryChar() {
@@ -765,7 +1028,7 @@ var canto_words = [];
     
     var func_name = "queryChar";
     var e, eResult;
-    var q, dwi, str, c, i, j, k, dr, ca, cpi, rra;
+    var q, dwi, da, dr, c, ca, ce, ci, cpi, ccount, i, j, k;
     
     // Get the result DIV
     eResult = document.getElementById("divResults");
@@ -786,158 +1049,83 @@ var canto_words = [];
     // Perform the query
     dwi = ctt_main.wordQuery(q);
     
-    // Build result string
-    str = "";
+    // If too many matches found, report the error and proceed no
+    // further
     if ((dwi.length === 1) && (dwi[0] === -1)) {
       // Too many matches found
-      str = "<p>Too many matches found!</p>";
-      
-    } else if (dwi.length > 0) {
-      // Matches found, so add each result
-      for(i = 0; i < dwi.length; i++) {
-        
-        // Get the dictionary record
-        dr = canto_words[dwi[i]];
-        
-        // First comes the headword as a traditional character
-        str = str + "<p class=\"dictp\">"
-        str = str + "<span class=\"dicthw\">";
-        str = str + htmlEsc(dr[0]);
-        
-        // If the simplified character is different, put it in
-        // parentheses
-        if (dr[1] !== dr[0]) {
-          str = str + " (" + htmlEsc(dr[1]) + ")";
-        }
-        
-        // Finish the headword span and line break
-        str = str + "</span><br/>";
-        
-        // Now all the word definitions, with multiple definitions
-        // separated by semicolons
-        str = str + "<span class=\"dictdef\">";
-        for(j = 0; j < dr[3].length; j++) {
-          if (j > 0) {
-            str = str + "; ";
-          }
-          str = str + htmlEsc(dr[3][j]);
-        }
-        str = str + "</span>";
-        
-        // Third line controls the character block that follows, which
-        // is hidden by default
-        str = str + "<br/>";
-        str = str + "<a href=\"javascript:void ctt_html.appear('"
-        str = str + "dyndiv" + i;
-        str = str + "');\">[&nbsp;Show&nbsp;]</a> ";
-        str = str + "<a href=\"javascript:void ctt_html.dismiss('"
-        str = str + "dyndiv" + i;
-        str = str + "');\">[&nbsp;Hide&nbsp;]</a>";
-        
-        // Finish the word block
-        str = str + "</p>";
-        
-        // Now get all the (traditional) characters as an array of
-        // codepoints
-        ca = [];
-        for(j = 0; j < dr[0].length; j++) {
-          c = dr[0].codePointAt(j);
-          ca.push(c);
-          if (c >= 0x10000) {
-            j++;
-          }
-        }
-        
-        // We will put the character table in a dynamic DIV, which is
-        // hidden by default, and the visibility controlled by the links
-        // at the end of the definition block
-        str = str + "<div style=\"display: none;\" ";
-        str = str + "id=\"dyndiv" + i + "\">";
-        
-        // Build the character table within the dynamic DIV
-        if (ca.length > 0) {
-          // Begin the table
-          str = str + "<table class=\"rtable\">";
-          
-          // Generate all the character rows
-          for(j = 0; j < ca.length; j++) {
-            // Look for codepoint record (or -1 if none)
-            cpi = ctt_main.seekCode(ca[j]);
-            
-            // Begin the row
-            str = str + "<tr>";
-            
-            // Add the character cell
-            str = str + "<td class=\"han\">";
-            str = str + String.fromCodePoint(ca[j]);
-            str = str + "</td>";
-            
-            // Add the character code with a link that types the
-            // character
-            str = str + "<td class=\"cpt\">";
-            str = str + "<a href=\"javascript:void ctt_html.typeChar("
-            str = str + (ca[j]).toString(10);
-            str = str + ");\">";
-            str = str + (ca[j]).toString(16).toLowerCase();
-            str = str + "</a>";
-            str = str + "</td>";
-            
-            // Add all the Jyutping readings
-            str = str + "<td class=\"cpr\">";
-            if (cpi >= 0) {
-              rra = canto_chars[cpi].crd;
-              if (rra.length > 0) {
-                for(k = 0; k < rra.length; k++) {
-                  if (k > 0) {
-                    str = str + ", ";
-                  }
-                  str = str + rra[k];
-                }
-                
-              } else {
-                str = str + "&nbsp;"
-              }
-              
-            } else {
-              str = str + "&nbsp";
-            }
-            str = str + "</td>";
-            
-            // Add definition, if available
-            str = str + "<td class=\"cpd\">";
-            if (cpi >= 0) {
-              if ("dfn" in canto_chars[cpi]) {
-                str = str + htmlEsc(canto_chars[cpi].dfn);
-              } else {
-                str = str + "&nbsp;";
-              }
-            } else {
-              str = str + "&nbsp;";
-            }
-            str = str + "</td>";
-            
-            // End the row
-            str = str + "</tr>";
-          }
-          
-          // End the table
-          str = str + "</table>";
-          
-        } else {
-          str = str + "(No characters)";
-        }
-        
-        // Finish the dynamic DIV
-        str = str + "</div>";
-      }
-      
-    } else {
-      // No matches
-      str = "<p>No matches found!</p>";
+      eResult.innerHTML = "<p>Too many matches found!</p>";
+      return;
     }
     
-    // Update results
-    eResult.innerHTML = str;
+    // Define an index object that will map base-16 codepoint value
+    // strings to their position within the ctable, and add a counter of
+    // how many character entries have been defined so far
+    ci = {};
+    ccount = 0;
+    
+    // Build the results object
+    da = {"wlist": [], "ctable": []};
+    for(i = 0; i < dwi.length; i++) {
+      // Get the dictionary record
+      dr = canto_words[dwi[i]];
+      
+      // Get all the (traditional) characters as an array of codepoints
+      ca = [];
+      for(j = 0; j < dr[0].length; j++) {
+        c = dr[0].codePointAt(j);
+        ca.push(c);
+        if (c >= 0x10000) {
+          j++;
+        }
+      }
+      
+      // For each codepoint in the codepoint array, add it to the
+      // character table if not already present, and then replace it in
+      // the codepoint array with an index into the ctable
+      for(j = 0; j < ca.length; j++) {
+        
+        // Get the key value for this codepoint
+        k = ca[j].toString(16).toLowerCase();
+        
+        // Add to ctable if not already present
+        if (!(k in ci)) {
+          // Get a character record for this codepoint
+          cpi = ctt_main.seekCode(ca[j]);
+          if (cpi >= 0) {
+            // Character record found, so get it
+            ce = canto_chars[cpi];
+            
+          } else {
+            // No character record found, so generate one with just the
+            // codepoint value and empty required fields
+            ce = {"cpv": ca[j], "crd": []};
+          }
+          
+          // Push the character record onto the character table
+          da.ctable.push(ce);
+          
+          // Add the mapping to the index and increase the ccount
+          ci[k] = ccount;
+          ccount++;
+        }
+        
+        // Replace the codepoint value in the array with its index into
+        // the characters table
+        ca[j] = ci[k];
+      }
+      
+      // Add the dictionary entry to the results object
+      da.wlist.push({
+        "tc": dr[0],
+        "sc": dr[1],
+        "py": dr[2],
+        "df": dr[3],
+        "cc": ca
+      });
+    }
+    
+    // Print the results
+    listWordResults(da);
   }
 
   /*
@@ -1032,6 +1220,7 @@ var canto_words = [];
     "typeChar": typeChar,
     "handleCodebox": handleCodebox,
     "listCharResults": listCharResults,
+    "listWordResults": listWordResults,
     "queryChar": queryChar,
     "queryWord": queryWord,
     "handleLoad": handleLoad,
