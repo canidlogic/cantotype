@@ -208,6 +208,9 @@ var canto_words = [];
     <!-- Load Pako library -->
     <script src="pako_inflate.js"></script>
     
+    <!-- Load sql.js library -->
+    <script src="sql-wasm.js"></script>
+    
     <!-- Load modules -->
     <script src="cantotype.js"></script>
     <script src="cantotype_load.js"></script>
@@ -1138,9 +1141,6 @@ var canto_words = [];
     var func_name = "handleLoad";
     var e, eTypeBox, eErrLine;
     
-    // Build indices
-    ctt_main.buildIndices();
-    
     // Add an event handler to the typing box that updates the position
     // for insertion whenever focus is lost from the element
     eTypeBox = document.getElementById("txtWrite");
@@ -1182,30 +1182,48 @@ var canto_words = [];
   }
   
   /*
-   * Kickstart procedure will asynchronously load the canto_chars and
-   * canto_words variables from the data files and then 
+   * Kickstart procedure will asynchronously compile the SQL database
+   * and then load the data files before calling handleLoad().
    */
   function kickstart() {
-    ctt_load.go(
-      function(ce) {
-        // Add character entry
-        canto_chars.push(ce);
+    
+    // Get splash DIV for reporting loading errors
+    var e = document.getElementById("divSplash");
+    
+    // Begin by asynchronously compiling sql.js
+    initSqlJs({
+      locateFile: function(fname) {
+        return (canto_config.sql_base + fname);
+      }
+    }).then(
+      function(SQL) {
+      // sql.js successfully compiled -- initialize the SQL database
+      ctt_main.initDB(SQL);
+      
+      // Asynchronously load all the records from data files
+      ctt_load.go(
+        ctt_main.addCRecord,
+        ctt_main.addWRecord,
+        function() {
+          // Loading complete, so go to main loader now
+          handleLoad();
+        },
+        function(ex) {
+          // Something went wrong during loading
+          console.log("Failed to load data: " + ex);
+          if (e != null) {
+            e.innerHTML = "ERROR: Data loading failed!";
+          }
+        });
       },
-      function(we) {
-        // Add word entry
-        canto_words.push(we);
-      },
-      function() {
-        // Loading complete, so go to main loader now
-        handleLoad();
-      },
-      function(ex) {
-        // Something went wrong during loading
-        var e = document.getElementById("divSplash");
+      function(reason) {
+        // sql.js did not compile successfully
+        console.log("Failed to load sql.js: " + reason);
         if (e != null) {
-          e.innerHTML = "ERROR: Data loading failed!";
+          e.innerHTML = "ERROR: Failed to compile sql.js!";
         }
-      });
+      }
+    );
   }
 
   /*
