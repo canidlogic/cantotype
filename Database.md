@@ -34,40 +34,49 @@ There are two parts of this synchronization protocol:  the _initial transaction_
 
 The __initial transaction__ is always the first transaction performed after connecting to the Cantotype database.  This must be a read-write transaction on the `vars` store.  Here is the algorithm for the initial transaction:
 
-     10 LET "reload_flag" = false
-     20 LET "current_image" = undefined
-     30 LET "file_dataver" = dataver in data file index
-     40 BEGIN read-write TRANSACTION on "vars"
-     50 QUERY "image" variable in "vars"
-     60 IF "image" variable IS NOT defined
-        THEN:
-           70 QUERY "dataver" variable in "vars"
-           80 IF "dataver" variable defined
-              THEN:
-                 90 DELETE "dataver" in "vars"
-          100 STORE 1 TO "image" in "vars"
-          110 LET "reload_flag" = true
-          120 LET "current_image" = 1
-        ELSE:
-          130 LET "current_image" = "image" variable
-          140 QUERY "dataver" variable in "vars"
-          150 IF "dataver" variable IS NOT defined
-              THEN:
-                160 INCREMENT "current_image"
-                170 STORE "current_image" TO "image" in "vars"
-                180 LET "reload_flag" = true
-              ELSE:
-                190 IF "dataver" < "file_dataver"
-                    THEN:
-                      200 INCREMENT "current_image"
-                      210 DELETE "dataver" in "vars"
-                      220 STORE "current"image" TO "image" in "vars"
-                      230 LET "reload_flag" = true
-    240 IF "reload_flag" IS true
-        THEN:
-          250 CALL "reload database from data files"
+    SINGLE READ-WRITE TRANSACTION ON "VARS":
+      - Query "image" variable
+        + NOT DEFINED:
+        |   - Define "image" as 1 and make sure no "dataver"
+        |   - Store 1 as current image state
+        |   - Reload database
+        |
+        + DEFINED:
+            - Query "dataver" variable
+              + NOT DEFINED:
+              |   - Increment "image"
+              |   - Store incremented value as current image state
+              |   - Reload database
+              |
+              + DEFINED:
+                  - Compare "dataver" to the dataver of data files
+                    + DATABASE SAME OR NEWER THAN DATA FILES:
+                    |   - Store "image" as current image state
+                    |    (No database reload necessary)
+                    |
+                    + DATABASE OLDER THAN DATA FILES:
+                        - Increment "image"
+                        - Store incremented value as current image state
+                        - Delete "dataver"
+                        - Reload database
 
-@@TODO:
+In other words, the initial transaction only uses the database as-is if both `image` and `dataver` are defined in the `vars` store _and_ the version in `dataver` from the `vars` store is greater than or equal to the `dataver` in the data file index.  In all other cases, a database reload is necessary.  Each time the database reload begins, the `dataver` variable is removed if present and the `image` variable is incremented (or defined as 1 if it does not exist).
+
+The "current image state" defined in the algorithm above is remembered.  Then, at the start of every transaction after the initial transaction, the following procedure must be done:
+
+    AT THE START OF EVERY SUBSEQUENT TRANSACTION:
+      - Query "image" variable
+        + NOT DEFINED:
+        |   - Database changed, need to reload app
+        |
+        + DEFINED:
+            - IF "image" NOT EQUAL TO current image state:
+              THEN:
+                - Database changed, need to reload app
+
+In other words, this transaction prefix verifies that the `image` variable has not changed since the initial transaction.  If there has been any change of the `image` variable, then the transaction may not proceed and any further use of the Cantotype database is disallowed until the Cantotype app instance is reloaded.  This happens when a new Cantotype app instance has been started _and_ that new instance has begun reloading the database with newer data.
+
+If a new Cantotype instance is started up while a previous Cantotype instance is still in the midst of reloading the database, the new Cantotype instance will increase the `image` number and begin a fresh reload.  The old Cantotype instance will detect this change to the `image` number within the prefix of the next transaction and then stop the reload with an error so that the newer instance may finish its fresh reload.
 
 ## Variables store
 
