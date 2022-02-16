@@ -23,6 +23,7 @@ canto_compile.pl - Compile data files for Cantotype.
     -unihan Unihan/folder
     -cedict cedict.txt
     -outdir out/dir
+    -dataver 2022-02-15:001
     -csplit 2
     -wsplit 5
 
@@ -44,6 +45,15 @@ data sources.
 This script generates multiple data files, along with a data index file.
 All these files will be written into the output directory that is given
 with the C<-outdir> parameter.
+
+The C<-dataver> parameter gives the data version that will be included
+in the data file index.  This is needed so that Cantotype clients can
+detect whether data files have changed and need to be updated.  The
+format must be C<DDDD-DD-DD:DDD> where each C<D> is a decimal digit.  It
+is recommended but not required that the first part of the format be a
+C<YYYY-MM-DD> date and the second part of the format be used to track
+versions made within the same day.  The only requirement is that newer
+versions compare as greater than older versions.
 
 The C<-csplit> and C<-wsplit> options are optional, and default to
 values of one if not given.  The C<-csplit> option indicates how many
@@ -83,13 +93,15 @@ records.  All of the file parts taken together define the total
 collection of records.
 
 There is also a data index file.  This file simply stores the filenames
-of all the component data files.  It is also a compressed JSON file.
-The data index JSON file stores a JSON object that has two properties:
-C<charlist> and C<wordlist>.  Both of these properties have values that
-are arrays of strings.  The C<charlist> property gives the filenames of
-all the data files that define the character table, while the
-C<wordlist> property gives the filenames of all the data files that
-define the word table.
+of all the component data files, as well as the data version number.
+It is also a compressed JSON file.  The data index JSON file stores a
+JSON object that has three properties:  C<dataver>, C<charlist>, and
+C<wordlist>.  The C<dataver> property is a string, the format of which
+was described earlier.  The other two properties have values that are
+arrays of strings.  The C<charlist> property gives the filenames of all
+the data files that define the character table, while the C<wordlist>
+property gives the filenames of all the data files that define the word
+table.
 
 The data index file only determines the filenames of the component data
 files, not their complete URLs.  The URL of the directory that contains
@@ -1002,6 +1014,25 @@ for(my $i = 0; $i <= $#ARGV; $i++) {
     # Store parameter
     $script_param{'outdir'} = "$p";
     
+  } elsif ($p eq "-dataver") { # ---------------------------------------
+    # Make sure at least one extra parameter
+    ($i < $#ARGV) or die "-outdir requires parameter, stopped";
+    
+    # Advance to next parameter and get it
+    $i++;
+    $p = $ARGV[$i];
+    
+    # Check that parameter not already defined
+    (not exists $script_param{'dataver'}) or 
+      die "-dataver defined twice, stopped";
+    
+    # Check parameter format
+    ($p =~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}:[0-9]{3}$/) or
+      die "-dataver format invalid, stopped";
+    
+    # Store parameter
+    $script_param{'dataver'} = "$p";
+    
   } elsif ($p eq "-csplit") { # ----------------------------------------
     # Make sure at least one extra parameter
     ($i < $#ARGV) or die "-csplit requires parameter, stopped";
@@ -1065,7 +1096,8 @@ if (not exists $script_param{'wsplit'}) {
 
 # Make sure all necessary parameters are now defined
 #
-for my $p ('hkscs', 'unihan', 'cedict', 'outdir', 'csplit', 'wsplit') {
+for my $p ('hkscs', 'unihan', 'cedict', 'outdir',
+            'csplit', 'wsplit', 'dataver') {
   (exists $script_param{$p}) or
     die "Missing parameter -$p, stopped";
 }
@@ -1203,6 +1235,7 @@ my %dfix;
 
 $dfix{'charlist'} = [];
 $dfix{'wordlist'} = [];
+$dfix{'dataver'}  = $script_param{'dataver'};
 
 for(my $i = 0; $i < $script_param{'csplit'}; $i++) {
   push @{$dfix{'charlist'}}, ($car_files[$i][1]);
