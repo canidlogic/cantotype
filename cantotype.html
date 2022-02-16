@@ -208,9 +208,6 @@ var canto_words = [];
     <!-- Load Pako library -->
     <script src="pako_inflate.js"></script>
     
-    <!-- Load sql.js library -->
-    <script src="sql-wasm.js"></script>
-    
     <!-- Load modules -->
     <script src="cantotype.js"></script>
     <script src="cantotype_load.js"></script>
@@ -1139,88 +1136,67 @@ var canto_words = [];
   function handleLoad() {
     
     var func_name = "handleLoad";
-    var e, eTypeBox, eErrLine;
-    
-    // Add an event handler to the typing box that updates the position
-    // for insertion whenever focus is lost from the element
-    eTypeBox = document.getElementById("txtWrite");
-    if (eTypeBox == null) {
-      fault(func_name, 700);
-    }
-    eTypeBox.onblur = function(ev) {
-      m_caret = eTypeBox.selectionStart;
-    };
-    
-    // Add an event handler to the codepoint box that immediately hides
-    // the error DIV for codepoints if there is any input
-    e = document.getElementById("txtCode");
-    if (e == null) {
-      fault(func_name, 800);
-    }
-    
-    eErrLine = document.getElementById("divErrLine");
-    if (eErrLine == null) {
-      fault(func_name, 810);
-    }
-    
-    e.oninput = function(ev) {
-      eErrLine.style.display = "none";
-    };
-    
-    // Hide the splash-screen DIV and show the main DIV
-    e = document.getElementById("divSplash");
-    if (e == null) {
-      fault(func_name, 900);
-    }
-    e.style.display = "none";
-    
-    e = document.getElementById("divMain");
-    if (e == null) {
-      fault(func_name, 910);
-    }
-    e.style.display = "block";
-  }
-  
-  /*
-   * Kickstart procedure will asynchronously compile the SQL database
-   * and then load the data files before calling handleLoad().
-   */
-  function kickstart() {
+    var eSplash;
     
     // Get splash DIV for reporting loading errors
-    var e = document.getElementById("divSplash");
+    var eSplash = document.getElementById("divSplash");
     
-    // Begin by asynchronously compiling sql.js
-    initSqlJs({
-      locateFile: function(fname) {
-        return (canto_config.sql_base + fname);
-      }
-    }).then(
-      function(SQL) {
-      // sql.js successfully compiled -- initialize the SQL database
-      ctt_main.initDB(SQL);
-      
-      // Asynchronously load all the records from data files
-      ctt_load.go(
-        ctt_main.addCRecord,
-        ctt_main.addWRecord,
-        function() {
-          // Loading complete, so go to main loader now
-          handleLoad();
-        },
-        function(ex) {
-          // Something went wrong during loading
-          console.log("Failed to load data: " + ex);
-          if (e != null) {
-            e.innerHTML = "ERROR: Data loading failed!";
-          }
-        });
+    // Asynchronously initialize the database before proceeding
+    ctt_main.initDB(
+      function() {
+        // Callback invoked when database initialization is successful
+        var e, eTypeBox, eErrLine;
+    
+        // Add an event handler to the typing box that updates the
+        // position for insertion whenever focus is lost from the
+        // element
+        eTypeBox = document.getElementById("txtWrite");
+        if (eTypeBox == null) {
+          fault(func_name, 700);
+        }
+        eTypeBox.onblur = function(ev) {
+          m_caret = eTypeBox.selectionStart;
+        };
+        
+        // Add an event handler to the codepoint box that immediately
+        // hides the error DIV for codepoints if there is any input
+        e = document.getElementById("txtCode");
+        if (e == null) {
+          fault(func_name, 800);
+        }
+        
+        eErrLine = document.getElementById("divErrLine");
+        if (eErrLine == null) {
+          fault(func_name, 810);
+        }
+        
+        e.oninput = function(ev) {
+          eErrLine.style.display = "none";
+        };
+        
+        // Hide the splash-screen DIV and show the main DIV
+        e = document.getElementById("divSplash");
+        if (e == null) {
+          fault(func_name, 900);
+        }
+        e.style.display = "none";
+        
+        e = document.getElementById("divMain");
+        if (e == null) {
+          fault(func_name, 910);
+        }
+        e.style.display = "block";
       },
+      
       function(reason) {
-        // sql.js did not compile successfully
-        console.log("Failed to load sql.js: " + reason);
-        if (e != null) {
-          e.innerHTML = "ERROR: Failed to compile sql.js!";
+        // Callback invoked if there was an error
+        console.log("Database init failed: " + reason);
+        if (eSplash != null) {
+          eSplash.innerHTML =
+            "ERROR: Database initialization failed!<br/>" +
+            "(Check that you are not in private browsing mode)<br/>" +
+            "<br/>" +
+            "Reason: " + htmlEsc(reason);
         }
       }
     );
@@ -1241,14 +1217,13 @@ var canto_words = [];
     "listWordResults": listWordResults,
     "queryChar": queryChar,
     "queryWord": queryWord,
-    "handleLoad": handleLoad,
-    "kickstart": kickstart
+    "handleLoad": handleLoad
   };
 
 }());
 
 // Register the document loading event
-window.onload = ctt_html.kickstart;
+window.onload = ctt_html.handleLoad;
 
     </script>
   </head>
