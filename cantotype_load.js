@@ -498,13 +498,86 @@
   }
 
   /*
+   * Load just the data index file to determine the data version string
+   * in the current data file list.
+   * 
+   * This is much faster than the go() operation, so you can use this to
+   * check if you really need to reload the database or whether
+   * everything is already in there.
+   * 
+   * The f_check function is called on success, and it gets a single
+   * string parameter that is the dataver stored in the data file index.
+   * 
+   * The f_err function is called on failure, and takes a reason
+   * parameter.
+   * 
+   * Parameters:
+   * 
+   *   f_check : function - callback that takes a string which will hold
+   *   the dataver read from the data file index
+   * 
+   *   f_err : function - error callback that takes a reason parameter
+   */
+  function checkDataver(f_check, f_err) {
+    
+    var func_name = "checkDataver";
+    
+    // Check parameters
+    if ((typeof(f_check) !== "function") ||
+        (typeof(f_err) !== "function")) {
+      fault(func_name, 100);
+    }
+    
+    // Asynchronously load the index file, function continues in the
+    // callback
+    loadGZJSON(
+        canto_config.data_base + canto_config.index_name,
+        function(js_index) {
+      
+      // Wrap handling in a try-catch that reports to the f_err callback
+      // if there is any exception
+      try {
+      
+        // Parsed JSON should be object
+        if (typeof(js_index) !== "object") {
+          fault(func_name, 200);
+        }
+        
+        // Parsed object should have a "dataver" parameter
+        if (!("dataver" in js_index)) {
+          fault(func_name, 210);
+        }
+      
+        // "dataver" should be a string
+        if (typeof(js_index.dataver) !== "string") {
+          fault(func_name, 220);
+        }
+        
+        // Check dataver format
+        if (!((/^[0-9]{4}-[0-9]{2}-[0-9]{2}:[0-9]{3}$/
+                ).test(js_index.dataver))) {
+          fault(func_name, 230);
+        }
+      
+        // Invoke the callback with the version
+        f_check(js_index.dataver);
+      
+      } catch (ex) {
+        f_err(ex);
+      }
+      
+    }, f_err);
+  }
+
+  /*
    * Export declarations
    * ===================
    * 
    * All exports are declared within a global "ctt_main" object.
    */
   window.ctt_load = {
-    "go": go
+    "go": go,
+    "checkDataver": checkDataver
   };
 
 }());
