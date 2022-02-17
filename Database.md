@@ -1,145 +1,39 @@
 # Cantotype Database Structure
 
-Cantotype uses IndexedDB to store its database client-side.  This document describes the structure of that database.
+Cantotype uses IndexedDB to store a cache of its dictionary files and webfonts.  This document describes the structure of that cache database.
 
 ## Version control
 
-There are two levels of version.  The first version level is the _structure version_ of the IndexedDB database.  This is the version number used in the IndexedDB open request.  The following cases apply to the structure version:
+A version number is provided in the IndexedDB open request, which determines how the database is structured.  The following cases apply to the version:
 
-__(1) Current database has newer structure version:__ If there already exists a Cantotype database but it has a newer structure version than the structure version used by the connecting Cantotype instance, the database connection will fail.  You must reload the Cantotype application so that it can use the newer database version.
+__(1) Current database has newer version:__ If there already exists a Cantotype database but it has a newer version than the version used by the connecting Cantotype instance, the database connection will fail.  You must reload the Cantotype application so that it can use the newer database version.
 
-__(2) Current database has same structure version:__ If there already exists a Cantotype database with the same structure version, the Cantotype application can connect to it without any issue and without any restructuring needed.
+__(2) Current database has same version:__ If there already exists a Cantotype database with the same version, the Cantotype application can connect to it without any issue and without any restructuring needed.
 
-__(3) Current database has older structure version:__ If there already exists a Cantotype database but it has an older structure version, then the browser will check if there currently exist any other active instances of Cantotype using this older structure version database.  If there are other active instances on the older version, then the new version of Cantotype will be blocked from starting up until all the old instances close their database connections.  If there are no other active instances on the older version, then the new Cantotype instance will delete all existing object stores from the database and create the new database structure, with no data filled in yet.
+__(3) Current database has older version:__ If there already exists a Cantotype database but it has an older version, then the browser will check if there currently exist any other active instances of Cantotype using this older version database.  If there are other active instances on the older version, then the new version of Cantotype will be blocked from starting up until all the old instances close their database connections.  If there are no other active instances on the older version, then the new Cantotype instance will delete all existing object stores from the database and create the new database structure, with no data filled in yet.
 
 __(4) No current database:__ If there does not already exist a Cantotype database, a new database will be created during the open request and structured appropriately at the current version number.
 
-The second version level is the _data version_ of the IndexedDB database.  This refers to the version of character and dictionary data that is currently stored in the IndexedDB database.  It is also possible for the IndexedDB database to be empty with no data within it.
+This version control only applies to the _structure_ of the cache database, not to the data cached within.
 
-The data version is stored within two variables `dataver` and `image` in an object store named `vars` (described in next section).  The `image` variable is an integer that starts out at one and is incremented each time the data within the database is reloaded.  If the `image` variable is not present, then the `dataver` variables is not present either, and the database is completely empty in this case.
+## File store
 
-If the `image` variable is present but the `dataver` variable is absent, it means either that the database is currently in the process of being rebuilt or that a rebuild of the database was interrupted and the database is now incomplete.  There is no way to reliably distinguish between these two alternative situations.
+The cache database has a single object store, named `fstore`.  This store uses "out-of-line" keys, which means that keys are separate from the objects.  The keys are the names of files stored in the cache, and the values are array buffers storing the raw binary data of the cached file, except for the special `image` key.
 
-If both the `image` and `dataver` variables are present, it means that the database is completely loaded with the dataset given by the data version in `dataver`.  The `dataver` is a string of the following format:
+The special `image` key is a revision number for the whole IndexedDB cache.  If the key is not defined, it is interpreted to be a key value of zero.  Otherwise, the key must map to an integer value that is greater than zero.  Each time the cache database is updated, the image key is incremented.
 
-    YYYY-MM-DD:RRR
+If the `image` key is not present, the cache should be entirely empty.  Otherwise, if the image key is present, there should also be a special file named `index` in the store.  If no `index` is present when `image` is present, then the image is invalid and must be completely resynchronized.
 
-Where `YYYY` is the four-digit, zero-padded year, `MM` is the two-digit, zero-padded month, `DD` is the two-digit, zero-padded day of month, and `RRR` is a three-digit, zero-padded revision code within that day.  Cantotype does not actually check that the given date is a valid date, it just uses decimal digits to compare data versions numerically.
+If `index` is present, then it must be a JSON text file compressed with GZip.  The top-level entity in the index file is a JSON object.  Each property represents a file that is stored in the cache, except that the `index` file is _not_ included.  The value of each property is an array of two elements.  The first element is a string that stores a revision code.  The second element is an integer that stores the number of bytes in the file.  (For compressed files, this stores the compressed size of the file.)  The second element is only used for providing progress updates while downloading data.
+
+The revision code is a string in the format `YYYY-MM-DD:RRR` where `YYYY` is the four-digit year, `MM` is the two-digit month, `DD` is the two-digit day of month, and `RRR` is the three-digit revision code within that day.  Fields must be zero-padded if necessary to length.  The date within the revision code does not actually have to be a valid date, though this is recommended.  Revision codes must be comparable to each other under string comparisons, such that greater revision codes are more recent than lesser revision codes.
 
 ## Synchronization
 
-Multiple instances of Cantotype might access the database at the same time.  Furthermore, with the way IndexedDB works, it is not feasible to load all of the data records in a single transaction.  This means that while the database is being rebuilt, it may be in an incomplete state and other instances of Cantotype might try to access the incomplete database.  Synchronization protocols are therefore required to ensure that the database is kept coherent across multiple instances of Cantotype.
+Cantotype always begins by fetching the data file index from the HTTP server.  The data file index has the same format as the special `index` file within the file store, as described in the previous section.  Once the data file index is fetched, Cantotype will perform a single read transaction to grab the `image` and `index` files from the IndexedDB database, if present.  If either `image` or `index` is absent, then all files within the data file index are added to the download list.  Otherwise, the download list will only include entries from the data file index where the revision stored on the HTTP server is more recent than the revision stored in the IndexedDB, or where the IndexedDB does not have any version of the file from the HTTP server.  The `image` code will also be saved in memory, with zero used as the image code if the image code is absent or not valid.
 
-There are two parts of this synchronization protocol:  the _initial transaction_ and the _transaction prefix._  The initial transaction must always be the first transaction performed after opening the Cantotype database.  The transaction prefix must always be preformed at the start of any transaction subsequent to the initial transaction.
+Next, any files on the download list are downloaded from the HTTP server into array buffers using XHR.  The file sizes in the data file index allow the total byte length of the download to be computed, so that the XHR progress event can give accurate progress statistics.  If the download list is empty _and_ there are no extra files in the IndexedDB cache that need to be removed, then the IndexedDB database is already synchronized and nothing further need be done.
 
-The __initial transaction__ is always the first transaction performed after connecting to the Cantotype database.  This must be a read-write transaction on the `vars` store.  Here is the algorithm for the initial transaction:
+Once all files have been downloaded and are held in memory, a single IndexedDB transaction will be used to update the whole cache.  First, since the IndexedDB could have changed in the meantime, the `image` file within the IndexedDB database will once again be queried to determine a current image number, or zero if the `image` file is absent or invalid.  If this image number does not match the image number that was determined from the initial transaction, then synchronization fails because the database has changed in the meantime.  Otherwise, all downloaded files are stored in the cache, the data file index replaces the old `index`, the `image` is incremented by one, and the incremented image number is remembered as the cache revision.  Finally, the last step within the transaction is to iterate through all the keys in the cache and delete any files that are neither `image` nor `index` nor referenced from the cache.  Once this transaction completes, the cache will be syncronized.
 
-    SINGLE READ-WRITE TRANSACTION ON "VARS":
-      - Query "image" variable
-        + NOT DEFINED:
-        |   - Define "image" as 1 and make sure no "dataver"
-        |   - Store 1 as current image state
-        |   - Reload database
-        |
-        + DEFINED:
-            - Query "dataver" variable
-              + NOT DEFINED:
-              |   - Increment "image"
-              |   - Store incremented value as current image state
-              |   - Reload database
-              |
-              + DEFINED:
-                  - Compare "dataver" to the dataver of data files
-                    + DATABASE SAME OR NEWER THAN DATA FILES:
-                    |   - Store "image" as current image state
-                    |    (No database reload necessary)
-                    |
-                    + DATABASE OLDER THAN DATA FILES:
-                        - Increment "image"
-                        - Store incremented value as current image state
-                        - Delete "dataver"
-                        - Reload database
-
-In other words, the initial transaction only uses the database as-is if both `image` and `dataver` are defined in the `vars` store _and_ the version in `dataver` from the `vars` store is greater than or equal to the `dataver` in the data file index.  In all other cases, a database reload is necessary.  Each time the database reload begins, the `dataver` variable is removed if present and the `image` variable is incremented (or defined as 1 if it does not exist).
-
-The "current image state" defined in the algorithm above is remembered.  Then, at the start of every transaction after the initial transaction, the following procedure must be done:
-
-    AT THE START OF EVERY SUBSEQUENT TRANSACTION:
-      - Query "image" variable
-        + NOT DEFINED:
-        |   - Database changed, need to reload app
-        |
-        + DEFINED:
-            - IF "image" NOT EQUAL TO current image state:
-              THEN:
-                - Database changed, need to reload app
-
-In other words, this transaction prefix verifies that the `image` variable has not changed since the initial transaction.  If there has been any change of the `image` variable, then the transaction may not proceed and any further use of the Cantotype database is disallowed until the Cantotype app instance is reloaded.  This happens when a new Cantotype app instance has been started _and_ that new instance has begun reloading the database with newer data.
-
-If a new Cantotype instance is started up while a previous Cantotype instance is still in the midst of reloading the database, the new Cantotype instance will increase the `image` number and begin a fresh reload.  The old Cantotype instance will detect this change to the `image` number within the prefix of the next transaction and then stop the reload with an error so that the newer instance may finish its fresh reload.
-
-## Variables store
-
-The database has an object store named `vars` used as a simple key/value store for configuration variables.  Objects in the store have the following format:
-
-    vars objects:
-    {
-      var_name  : string,
-      var_value : (any type)
-    }
-
-    key: var_name
-
-The `vars` store is used to hold a variable `dataver` describing the data version, as described in the previous section.  If no such variable is defined, the database does not include any valid data set.
-
-## Character store
-
-The database has an object store named `cinfo` that stores data records for individual Chinese characters.  Objects in the store have the following format:
-
-    cinfo objects:
-    {
-        cpv : integer,
-        crd : array of string,
-      ( dfn : string )
-    }
-
-    key: cpv
-
-The `cpv` is the numeric Unicode codepoint value of the character.  The `crd` is an array of Cantonese Jyutping readings of the character.  The optional `dfn` property, if defined, is an English gloss of the character, but note that the English gloss might contain Chinese characters!
-
-## Readings store
-
-The database has an object store named `cread` that maps Jyutping readings to all codepoints having that reading.  All codepoints referenced in this object store will be in the `cinfo` object store.  The values in this store can be derived completely from the `cinfo` object store.  Objects in the store have the following format:
-
-    cread objects:
-    {
-      jyu : string,
-      cpa : array of integer
-    }
-
-    key: jyu
-
-The `jyu` is a Jyutping syllable in lowercase.  The `cpa` array stores the numeric Unicode codepoints of all characters that have that Cantonese reading _and_ appear in the `cinfo` object store.
-
-## Word store
-
-The database has an object store named `words` that stores all the word definitions given in the dictionary.  Objects in the store have the following format:
-
-    words objects:
-    {
-        wid : integer,
-        tc  : string,
-      ( sc  : string, )
-        py  : array of string,
-        df  : array of string
-    }
-
-    key: wid, auto-increment
-
-The `wid` key for this object store is arbitrary and generated automatically with an auto-increment.
-
-`tc` stores the traditional characters for this dictionary entry.  If there are any different simplified characters, `sc` stores the simplified characters for this dictionary entry.  If the traditional and simplified characters are exactly the same, the `sc` property is left out.
-
-`py` is an array of strings representing the Mandarin Pinyin syllables for the word.  Instead of diacritics, a tone numbers is suffixed to the syllable, with 5 standing for neutral tone.  Instead of U-umlaut, the lowercase letter U followed by a colon is used.  Only lowercase letters are used in the syllables.
-
-`df` is an array of strings representing the English definitions attached to this dictionary entry.  However, note that Chinese characters may still be used within the English definitions.
+The remembered image number is used at the start of all subsequent transactions to check whether the cache changed.  If the remembered image number does not match the number stored in `image`, then some other instance of Cantotype has changed the database and the current instance's cache is no longer valid.
