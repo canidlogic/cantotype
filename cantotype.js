@@ -439,8 +439,9 @@
   /*
    * Add a character record to the database.
    * 
-   * m_conn must be true indicating an active database connection,
-   * however m_built must be false.
+   * You must provide an IndexedDB transaction that has read/write
+   * access to the cinfo and cread stores.  You must also provide done
+   * and error callbacks.
    * 
    * The ce parameter is an object representing the character record to
    * add.  It has the following parameters:
@@ -462,17 +463,19 @@
    * 
    * Parameters:
    * 
+   *   tr : the prepped transaction
+   * 
+   *   f_done : function - callback function when done
+   * 
+   *   f_err : function - callback function in case of error that takes
+   *   a reason parameter
+   * 
    *   ce : object - the character record to add to the database
    */
-  function addCRecord(ce) {
+  function addCRecord(tr, f_done, f_err, ce) {
     
     var func_name = "addCRecord";
-    var i;
-    
-    // Check state
-    if (m_built || (!m_conn)) {
-      fault(func_name, 50);
-    }
+    var i, r;
     
     // Check parameter
     if (typeof(ce) !== "object") {
@@ -516,13 +519,18 @@
     }
     
     // @@TODO:
+    r = tr.objectStore("cinfo").put(ce);
+    r.onsuccess = function(ev) {
+      f_done();
+    };
   }
   
   /*
    * Add a word record to the database.
    * 
-   * m_conn must be true indicating an active database connection,
-   * however m_built must be false.
+   * You must provide an IndexedDB transaction that has read/write
+   * access to the words store.  You must also provide done and error
+   * callbacks.
    * 
    * The wa parameter is an array representing the word record to add.
    * It has the following elements:
@@ -541,17 +549,19 @@
    * 
    * Parameters:
    * 
+   *   tr : the prepped transaction
+   * 
+   *   f_done : function - callback function when done
+   * 
+   *   f_err : function - callback function in case of error that takes
+   *   a reason parameter
+   * 
    *   wa : array - the word record to add to the database
    */
-  function addWRecord(wa) {
+  function addWRecord(tr, f_done, f_err, wa) {
     
     var func_name = "addWRecord";
-    var i, pya;
-    
-    // Check state
-    if (m_built || (!m_conn)) {
-      fault(func_name, 50);
-    }
+    var i, pya, r;
     
     // Check parameter
     if (!(wa instanceof Array)) {
@@ -587,6 +597,15 @@
     }
     
     // @@TODO:
+    r = tr.objectStore("words").put({
+      tc: wa[0],
+      sc: wa[1],
+      py: wa[2],
+      df: wa[3]
+    });
+    r.onsuccess = function(ev) {
+      f_done();
+    };
   }
   
   /*
@@ -635,12 +654,59 @@
           // database; proceed when everything completes successfully
           ctt_load.go(
             function(jsd, ff_done, ff_err) {
-              // @@TODO:
-              ff_done();
+              // Prep a transaction to process this character record
+              // block
+              prepTrans(["cinfo", "cread"], "readwrite",
+                function(trb) {
+                  
+                  // Add all records in this block
+                  i = 0;
+                  f = function(evz) {
+                    
+                    // If we are past the last record, we are done
+                    if (i >= jsd.length) {
+                      ff_done();
+                      return;
+                    }
+                    
+                    // Otherwise, increment i and add this record
+                    i++;
+                    addCRecord(trb, f, ff_err, jsd[i - 1]);
+                    
+                  };
+                  f(null);
+                  
+                },
+                ff_err
+              );
+              
             },
             function(jsd, ff_done, ff_err) {
-              // @@TODO:
-              ff_done();
+              // Prep a transaction to process this word record block
+              prepTrans(["words"], "readwrite",
+                function(trb) {
+                  
+                  // Add all records in this block
+                  i = 0;
+                  f = function(evz) {
+                    
+                    // If we are past the last record, we are done
+                    if (i >= jsd.length) {
+                      ff_done();
+                      return;
+                    }
+                    
+                    // Otherwise, increment i and add this record
+                    i++;
+                    addWRecord(trb, f, ff_err, jsd[i - 1]);
+                    
+                  };
+                  f(null);
+                  
+                },
+                ff_err
+              );
+              
             },
             function() {
               // OK, everything has been loaded into the database now
