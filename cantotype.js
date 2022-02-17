@@ -5,9 +5,6 @@
  * ============
  * 
  * Main program module for Cantotype.
- * 
- * Requires cantotype_load.js to be loaded, as well as the generated
- * cantotype_config.js file.
  */
 
 // Wrap everything in an anonymous function that we immediately invoke
@@ -37,29 +34,29 @@
    */
   
   /*
-   * Flag that is set to true once the dictionary has been initialized.
+   * Flag that is set to true once the indices have been built.
    */
   var m_built = false;
-  
+
   /*
-   * Flag that is set once the database is connected.
-   */
-  var m_conn = false;
-  
-  /*
-   * The image state when the database was first loaded, or -1 if not
-   * yet established.
+   * The codepoint index, only available if m_built.
    * 
-   * This is established by the syncTransaction() function and must be
-   * established before any other transaction can be performed on the
-   * database.
+   * Once built, this is an object (treated as an associative array)
+   * where each property key is a base-16 codepoint value in lowercase
+   * with no padding, and each property value is an integer that is an
+   * index into the canto_chars global.
    */
-  var m_dbimage = -1;
-  
+  var m_idx_cpv;
+
   /*
-   * The IndexedDB handle, only if m_conn is true.
+   * The Jyutping index, only available if m_built.
+   * 
+   * Once built, this is an object (treated as an associative array)
+   * where each property key is a Jyutping syllable and each property
+   * value is an array of integer codepoint values in ascending order,
+   * indicating which codepoints have that Jyutping reading.
    */
-  var m_db;
+  var m_idx_jyu;
 
   /*
    * Local functions
@@ -94,124 +91,6 @@
     
     // Throw exception
     throw ("ctt_main:" + func_name + ":" + String(loc));
-  }
-  
-  /*
-   * Get a new transaction and run the transaction prefix so that it is
-   * properly synchronized.
-   * 
-   * m_conn must be true and m_dbimage must be greater than zero for
-   * this to work.
-   * 
-   * storeNames and mode are passed through to the IndexedDB function
-   * IDBDatabase.transaction(), except that the store "vars" is added
-   * to storeNames if not already present.
-   * 
-   * Once the transaction is created, this will verify that "image" is
-   * defined in the "vars" table with a value equal to m_dbimage.  If
-   * not, then the database is out of sync and f_err will be invoked
-   * with the string "DBSyncError".
-   * 
-   * The callback f_ready will be invoked with the newly prepped
-   * transaction object if successful, otherwise f_err will be invoked
-   * with a reason.
-   * 
-   * The transaction will also automatically have f_err registered as
-   * an error handler for both the abort and error events on the
-   * transaction.
-   * 
-   * See "Database.md" for more about how synchronization works.
-   * 
-   * Parameters:
-   * 
-   *   storeNames: string array - the stores that will be accessed
-   *   during the transaction, passed through to IndexedDB after adding
-   *   "vars" if missing
-   * 
-   *   mode : <any> - passed through to IndexedDB
-   * 
-   *   f_ready : function - callback invoked with the newly prepped
-   *   transaction if successful
-   * 
-   *   f_err : function - callback invoked with a reason if there is any
-   *   problem
-   */
-  function prepTrans(storeNames, mode, f_ready, f_err) {
-    
-    var func_name = "prepTrans";
-    var tr, r, op;
-    var need_vars, i;
-    
-    // Check state
-    if ((!m_conn) || (m_dbimage < 1)) {
-      fault(func_name, 50);
-    }
-    
-    // If storeNames is not an array, it might be a DOMStringList, in
-    // which case make an array copy of it
-    if (!(storeNames instanceof Array)) {
-      op = storeNames;
-      storeNames = [];
-      for(i = 0; i < op.length; i++) {
-        storeNames.push(op[i]);
-      }
-    }
-    
-    // Check parameters
-    if (!(storeNames instanceof Array)) {
-      fault(func_name, 100);
-    }
-    if ((typeof(f_ready) !== "function") ||
-        (typeof(f_err) !== "function")) {
-      fault(func_name, 110);
-    }
-    
-    // Check if we need to add "vars" to the list of stores
-    need_vars = true;
-    for(i = 0; i < storeNames.length; i++) {
-      if (storeNames[i] === "vars") {
-        need_vars = false;
-        break;
-      }
-    }
-    
-    // Add "vars" if necessary
-    if (need_vars) {
-      storeNames.push("vars");
-    }
-    
-    // Grab a new transaction
-    tr = m_db.transaction(storeNames, mode);
-    
-    // If we added "vars" to the array, remove it
-    if (need_vars) {
-      storeNames.pop();
-    }
-    
-    // Register error handler
-    tr.onabort = f_err;
-    tr.onerror = f_err;
-    
-    // Query for the "image" variable
-    r = tr.objectStore("vars").get("image");
-    r.onsuccess = function(ev) {
-    
-      // If "image" variable not defined, then synchronization error
-      if (!(r.result)) {
-        f_err("DBSyncError");
-        return;
-      }
-      
-      // Check whether image equal to stored image
-      if (r.result.var_value === m_dbimage) {
-        // Database still in sync, so we are ready
-        f_ready(tr);
-      
-      } else {
-        // Database not in sync, so synchronization error
-        f_err("DBSyncError");
-      }
-    };
   }
   
   /*
@@ -437,510 +316,6 @@
   }
   
   /*
-   * Add a character record to the database.
-   * 
-   * You must provide an IndexedDB transaction that has read/write
-   * access to the cinfo and cread stores.  You must also provide done
-   * and error callbacks.
-   * 
-   * The ce parameter is an object representing the character record to
-   * add.  It has the following parameters:
-   * 
-   *   cpv - the numeric codepoint of the character as an integer
-   *   crd - array of Jyutping readings strings
-   *   dfn - (optional) English gloss string
-   * 
-   * All properties except those marked (optional) must be present.
-   * 
-   * The cpv property must be in Unicode range and not be a surrogate
-   * codepoint.
-   * 
-   * The crd property must have at least one element.  Each Jytuping
-   * reading string must be a sequence of one or more lowercase ASCII
-   * letters followed by a single decimal digit in range 1-6.
-   * 
-   * The dfn property, if present, may be any string.
-   * 
-   * Parameters:
-   * 
-   *   tr : the prepped transaction
-   * 
-   *   f_done : function - callback function when done
-   * 
-   *   f_err : function - callback function in case of error that takes
-   *   a reason parameter
-   * 
-   *   ce : object - the character record to add to the database
-   */
-  function addCRecord(tr, f_done, f_err, ce) {
-    
-    var func_name = "addCRecord";
-    var i, r;
-    
-    // Check parameter
-    if (typeof(ce) !== "object") {
-      fault(func_name, 100);
-    }
-    if ((!("cpv" in ce)) || (!("crd" in ce))) {
-      fault(func_name, 110);
-    }
-    
-    if (typeof(ce.cpv) !== "number") {
-      fault(func_name, 120);
-    }
-    if (!isFinite(ce.cpv)) {
-      fault(func_name, 130);
-    }
-    ce.cpv = Math.floor(ce.cpv);
-    if ((ce.cpv < 0) || (ce > 0x10ffff) ||
-          ((ce.cpv >= 0xd800) && (ce.cpv <= 0xdfff))) {
-      fault(func_name, 140);
-    }
-    
-    if (!(ce.crd instanceof Array)) {
-      fault(func_name, 150);
-    }
-    if (ce.crd.length < 1) {
-      fault(func_name, 160);
-    }
-    for(i = 0; i < ce.crd.length; i++) {
-      if (typeof(ce.crd[i]) !== "string") {
-        fault(func_name, 170);
-      }
-      if (!((/^[a-z]+[1-6]$/).test(ce.crd[i]))) {
-        fault(func_name, 180);
-      }
-    }
-    
-    if ("dfn" in ce) {
-      if (typeof(ce.dfn) !== "string") {
-        fault(func_name, 190);
-      }
-    }
-    
-    // @@TODO:
-    r = tr.objectStore("cinfo").put(ce);
-    r.onsuccess = function(ev) {
-      f_done();
-    };
-  }
-  
-  /*
-   * Add a word record to the database.
-   * 
-   * You must provide an IndexedDB transaction that has read/write
-   * access to the words store.  You must also provide done and error
-   * callbacks.
-   * 
-   * The wa parameter is an array representing the word record to add.
-   * It has the following elements:
-   * 
-   *   1 : traditional character string
-   *   2 : simplified character string
-   *   3 : array of Pinyin strings
-   *   4 : array of definition strings
-   * 
-   * The array must have exactly these four elements.
-   * 
-   * The array of Pinyin strings is transformed by this function before
-   * it is added to the database.  Specifically, elements are dropped
-   * from it unless they have at least one ASCII letter.  Also, the
-   * Pinyin is normalized to only have lowercase letters.
-   * 
-   * Parameters:
-   * 
-   *   tr : the prepped transaction
-   * 
-   *   f_done : function - callback function when done
-   * 
-   *   f_err : function - callback function in case of error that takes
-   *   a reason parameter
-   * 
-   *   wa : array - the word record to add to the database
-   */
-  function addWRecord(tr, f_done, f_err, wa) {
-    
-    var func_name = "addWRecord";
-    var i, pya, r;
-    
-    // Check parameter
-    if (!(wa instanceof Array)) {
-      fault(func_name, 100);
-    }
-    if (wa.length !== 4) {
-      fault(func_name, 120);
-    }
-    if ((typeof(wa[0]) !== "string") || (typeof(wa[1]) !== "string")) {
-      fault(func_name, 130);
-    }
-    if ((!(wa[2] instanceof Array)) || (!(wa[3] instanceof Array))) {
-      fault(func_name, 140);
-    }
-    for(i = 0; i < wa[2].length; i++) {
-      if (typeof(wa[2][i]) !== "string") {
-        fault(func_name, 150);
-      }
-    }
-    for(i = 0; i < wa[3].length; i++) {
-      if (typeof(wa[3][i]) !== "string") {
-        fault(func_name, 160);
-      }
-    }
-    
-    // Build a new Pinyin array, copying over only elements that have at
-    // least one letter and transforming to lowercase
-    pya = [];
-    for(i = 0; i < wa[2].length; i++) {
-      if ((/[A-Za-z]/).test(wa[2][i])) {
-        pya.push(wa[2][i].toLowerCase());
-      }
-    }
-    
-    // @@TODO:
-    r = tr.objectStore("words").put({
-      tc: wa[0],
-      sc: wa[1],
-      py: wa[2],
-      df: wa[3]
-    });
-    r.onsuccess = function(ev) {
-      f_done();
-    };
-  }
-  
-  /*
-   * Reload the IndexedDB database from the data files.
-   * 
-   * m_conn must be true indicating an active database connection,
-   * however m_built must be false.  m_dbimage must also be greater than
-   * zero.
-   * 
-   * Loading is asynchronous, so you must provide callback functions to
-   * invoke on success and on error.  The error function gets a reason.
-   * 
-   * Parameters:
-   * 
-   *   f_done : function - callback function to invoke when successful
-   * 
-   *   f_err : function - callback function which takes a reason
-   *   parameter to invoke if initialization fails
-   */
-  function reloadDB(f_done, f_err) {
-    
-    var func_name = "reloadDB";
-    
-    // Check state
-    if (m_built || (!m_conn) || (m_dbimage < 1)) {
-      fault(func_name, 50);
-    }
-    
-    // Check parameters
-    if ((typeof(f_done) !== "function") ||
-        (typeof(f_err) !== "function")) {
-      fault(func_name, 100);
-    }
-    
-    // Prep a read-write transaction on all the object stores
-    prepTrans(m_db.objectStoreNames, "readwrite",
-      function(tr) {
-        var r, i, f;
-        
-        // When this transaction completes, all records will have been
-        // dropped from all stores except the "vars" store; we can then
-        // load all the records from the data files, each in a separate
-        // transaction
-        tr.oncomplete = function(ev) {
-          // Go through the data files and add everything to the
-          // database; proceed when everything completes successfully
-          ctt_load.go(
-            function(jsd, ff_done, ff_err) {
-              // Prep a transaction to process this character record
-              // block
-              prepTrans(["cinfo", "cread"], "readwrite",
-                function(trb) {
-                  
-                  // Add all records in this block
-                  i = 0;
-                  f = function(evz) {
-                    
-                    // If we are past the last record, we are done
-                    if (i >= jsd.length) {
-                      ff_done();
-                      return;
-                    }
-                    
-                    // Otherwise, increment i and add this record
-                    i++;
-                    addCRecord(trb, f, ff_err, jsd[i - 1]);
-                    
-                  };
-                  f(null);
-                  
-                },
-                ff_err
-              );
-              
-            },
-            function(jsd, ff_done, ff_err) {
-              // Prep a transaction to process this word record block
-              prepTrans(["words"], "readwrite",
-                function(trb) {
-                  
-                  // Add all records in this block
-                  i = 0;
-                  f = function(evz) {
-                    
-                    // If we are past the last record, we are done
-                    if (i >= jsd.length) {
-                      ff_done();
-                      return;
-                    }
-                    
-                    // Otherwise, increment i and add this record
-                    i++;
-                    addWRecord(trb, f, ff_err, jsd[i - 1]);
-                    
-                  };
-                  f(null);
-                  
-                },
-                ff_err
-              );
-              
-            },
-            function() {
-              // OK, everything has been loaded into the database now
-              console.log("loading done");
-              
-              // @@TODO: set dataver
-              // @@TODO: update m_built before calling done callback
-            },
-            f_err
-          );
-        };
-        
-        // Our first task is to drop all records from all object stores,
-        // except for the "vars" store
-        i = 0;
-        f = function(ev) {
-          // If i is valid AND the current object store name is "vars"
-          // then increment i to skip over the "vars" store
-          if ((i < m_db.objectStoreNames.length) &&
-              (m_db.objectStoreNames[i] === "vars")) {
-            i++;
-          }
-          
-          // Do clear if i is still a valid index, else let this
-          // transaction complete and code will continue in the
-          // completion handler for this transaction
-          if (i < m_db.objectStoreNames.length) {
-            // Clear the object store and increment i
-            r = tr.objectStore(m_db.objectStoreNames[i]).clear();
-            i++;
-            
-            // Asynchronous callbacks
-            r.onerror = f_err;
-            r.onsuccess = f;
-          }
-        };
-        f(null);
-        
-      },
-      f_err
-    );
-  }
-  
-  /*
-   * Perform the synchronization "initial transaction."
-   * 
-   * m_conn must be true indicating an active database connection,
-   * however m_built must be false.  Also, m_dbimage must be -1
-   * indicating that no image has been loaded yet.
-   * 
-   * This is the first transaction that must be performed after the
-   * IndexedDB database is opened.  See "Database.md" for further
-   * information.
-   * 
-   * The m_dbimage variable will be set by this procedure.
-   * 
-   * file_dataver is the dataver from the data file index.
-   * 
-   * This function proceeds asynchronously.  The f_ready callback is
-   * invoked if the database can now be used and no reload is necessary.
-   * The f_reload callback is invoked if the database needs to be
-   * reloaded before it can be used.  The f_err callback is invoked if
-   * there is an error, and it takes a "reason" parameter.
-   * 
-   * Exactly one of the three callbacks will be invoked by this function
-   * eventually.  Note that if f_reload is invoked, f_ready will NOT be
-   * invoked.
-   * 
-   * Parameters:
-   * 
-   *   file_dataver : string - the version from the data file index
-   * 
-   *   f_ready : function - callback if database is ready without reload
-   * 
-   *   f_reload : function - callback if database needs reload
-   * 
-   *   f_err : function - callback if error, takes reason argument
-   */
-  function syncTransaction(file_dataver, f_ready, f_reload, f_err) {
-    
-    var func_name = "syncTransaction";
-    var need_reload = false;
-    var tr, r;
-    
-    // Check state
-    if (m_built || (!m_conn) || (m_dbimage !== -1)) {
-      fault(func_name, 50);
-    }
-    
-    // Check parameters
-    if ((typeof(file_dataver) !== "string") ||
-        (typeof(f_ready) !== "function") ||
-        (typeof(f_reload) !== "function") ||
-        (typeof(f_err) !== "function")) {
-      fault(func_name, 100);
-    }
-    
-    // Our initial transaction is a read-write transaction on "vars"
-    tr = m_db.transaction(["vars"], "readwrite");
-    
-    // Set error handlers on the transaction; these will also be used if
-    // any of the component requests of the transaction fail, in which
-    // case the errors will bubble up to the transaction
-    tr.onabort = f_err;
-    tr.onerror = f_err;
-    
-    // The following handler will be run when the initial transaction is
-    // done; by this point, m_dbimage will be set and need_reload will
-    // be set appropriately
-    tr.oncomplete = function(ev) {
-      // At this point, m_dbimage should be set
-      if (m_dbimage < 1) {
-        f_err("Image check failed!");
-      }
-      
-      // Going by the need_reload flag, invoke the appropriate callback
-      if (need_reload) {
-        f_reload();
-      } else {
-        f_ready();
-      }
-    };
-    
-    // Look for the "image" variable in the "vars" store
-    r = tr.objectStore("vars").get("image");
-    r.onsuccess = function(ev) {
-      // Check whether "image" was defined
-      if (!(r.result)) {
-        // "image" not defined, so we need to define it as 1
-        r = tr.objectStore("vars").add({
-          var_name: "image",
-          var_value: 1
-        });
-        r.onsuccess = function(evb) {
-          // We set "image" to 1, so now set our current database image
-          // number to 1
-          m_dbimage = 1;
-          
-          // Now check whether "dataver" is defined (it shouldn't be,
-          // but let's make sure)
-          r = tr.objectStore("vars").get("dataver");
-          r.onsuccess = function(evc) {
-            // Check if "dataver" is defined
-            if (r.result) {
-              // "dataver" is defined, so make a note in the console
-              // because this wasn't supposed to happen
-              console.log("Warning: dataver present without image!");
-              
-              // Delete the "dataver" record
-              r = tr.objectStore("vars").delete("dataver");
-              r.onsuccess = function(evd) {
-                // We are ready now, set the reload flag and let this
-                // transaction complete; code continues in the
-                // "complete" event handler on the transaction
-                need_reload = true;
-              };
-              
-            } else {
-              // "dataver" not defined so we are OK now, set the reload
-              // flag and let this transaction complete; code continues
-              // in the "complete" event handler on the transaction
-              need_reload = true;
-            }
-          };
-        };
-        
-      } else {
-        // "image" is defined, so grab its value as the current database
-        // image state
-        m_dbimage = r.result.var_value;
-        
-        // Now query for "dataver"
-        r = tr.objectStore("vars").get("dataver");
-        r.onsuccess = function(evb) {
-          // Check whether "dataver" is defined
-          if (!(r.result)) {
-            // "dataver" not defined so database data is incomplete and
-            // needs to be freshly reloaded; increment the current image
-            // number
-            m_dbimage++;
-            
-            // Store the incremented image
-            r = tr.objectStore("vars").put({
-              var_name: "image",
-              var_value: m_dbimage
-            });
-            r.onsuccess = function(evc) {
-              // We are now ready to reload the database, so let this
-              // transaction complete; code continues in the "complete"
-              // event handler on the transaction
-              need_reload = true;
-            };
-            
-          } else {
-            // "dataver" defined so check how database version compares
-            // to version in data files
-            if (r.result.var_value >= file_dataver) {
-              // Database version is same or newer than version stored
-              // in files, so we can use it without reloading; clear the
-              // reload flag and let this transaction complete; code
-              // continues in the "complete" event handler on the
-              // transaction
-              need_reload = false;
-              
-            } else {
-              // Data files have newer version than database so we need
-              // first to increment the image number
-              m_dbimage++;
-              
-              // Store the incremented image
-              r = tr.objectStore("vars").put({
-                var_name: "image",
-                var_value: m_dbimage
-              });
-              r.onsuccess = function(evc) {
-                // We need to redo the database, so delete the dataver
-                r = tr.objectStore("vars").delete("dataver");
-                r.onsuccess = function(evd) {
-                
-                  // We are now ready to redo the database, so set the
-                  // reload flag and let this transaction complete; code
-                  // continues in the "complete" event handler on the
-                  // transaction
-                  need_reload = true;
-                };
-              };
-            }
-          }
-        };
-      }
-    };
-  }
-  
-  /*
    * Public functions
    * ================
    */
@@ -1148,13 +523,12 @@
       
       // If format basically correct, look up; else, return nothing
       if ((/^[a-z]+[1-6]$/).test(str)) {
-        // @@TODO:
-        // if (str in m_idx_jyu) {
+        if (str in m_idx_jyu) {
           // Return copy of codepoint array
-          // return m_idx_jyu[str].map(x => x);
-        // } else {
+          return m_idx_jyu[str].map(x => x);
+        } else {
           return [];
-        // }
+        }
       } else {
         return [];
       }
@@ -1543,118 +917,78 @@
     cpv = cpv.toString(16).toLowerCase();
     
     // Use index to look up result
-    // @@TODO:
-    // if (cpv in m_idx_cpv) {
-    //  return m_idx_cpv[cpv];
-    // } else {
+    if (cpv in m_idx_cpv) {
+      return m_idx_cpv[cpv];
+    } else {
       return -1;
-    // }
+    }
   }
   
   /*
-   * Initialize the IndexedDB database so that you may begin using this
-   * module.
+   * Build indices from the global canto_chars and canto_words variables
+   * that are defined outside of this module.
    * 
-   * This function may only be called once.  Must be called before using
-   * other functions in this module.
-   * 
-   * Initialization is asynchronous, so you must provide callback 
-   * functions to invoke on success and on error.  The error function
-   * gets a reason.
-   * 
-   * Parameters:
-   * 
-   *   f_done : function - callback function to invoke when successful
-   * 
-   *   f_err : function - callback function which takes a reason
-   *   parameter to invoke if initialization fails
+   * May only be called once.  Must be called before doing queries.
    */
-  function initDB(f_done, f_err) {
+  function buildIndices() {
     
-    var func_name = "initDB";
-    var dbo;
+    var func_name = "buildIndices";
+    var i, j, cpv, r, ra;
     
     // Check state
-    if (m_built || m_conn) {
+    if (m_built) {
       fault(func_name, 50);
     }
     
-    // Check parameters
-    if ((typeof(f_done) !== "function") ||
-        (typeof(f_err) !== "function")) {
-      fault(func_name, 100);
+    // Build the codepoint to array index
+    m_idx_cpv = {};
+    for(i = 0; i < canto_chars.length; i++) {
+      // Get current record
+      r = canto_chars[i];
+      
+      // Get codepoint value
+      cpv = r.cpv;
+      
+      // Convert codepoint to lowercase hex string
+      cpv = cpv.toString(16).toLowerCase();
+      
+      // Add entry to index
+      m_idx_cpv[cpv] = i;
     }
     
-    // Start a request to open the database with structure version 1
-    dbo = window.indexedDB.open("CantotypeDB", 1);
-    
-    // Error handler for database opening request
-    dbo.onerror = function(ev) {
-      f_err("Failed to open IndexedDB");
-    };
-    
-    // Error handler if another instance has an older version open
-    dbo.onblocked = function() {
-      f_err("Blocked; other Cantotype windows must be closed first");
-    }
-    
-    // Handler invoked if we need to create a new database or update an
-    // older structure version
-    dbo.onupgradeneeded = function(ev) {
-      var db, i, obn;
+    // Build the Jyutping index
+    m_idx_jyu = {};
+    for(i = 0; i < canto_chars.length; i++) {
+      // Get current record
+      r = canto_chars[i];
       
-      // Get the database handle
-      db = ev.target.result;
+      // Get codepoint value and readings array
+      cpv = r.cpv;
+      ra = r.crd;
       
-      // Get a copy of any existing object stores from any older version
-      obn = [];
-      for(i = 0; i < db.objectStoreNames.length; i++) {
-        obn.push(db.objectStoreNames[i]);
+      // Go through each reading
+      for(j = 0; j < ra.length; j++) {
+        // Get the current reading
+        r = ra[j];
+        
+        // If reading not yet in index, add it
+        if (!(r in m_idx_jyu)) {
+          m_idx_jyu[r] = [];
+        }
+        
+        // Add codepoint to reading array
+        m_idx_jyu[r].push(cpv);
       }
-      
-      // Delete any existing object stores from any older version
-      for(i = 0; i < obn.length; i++) {
-        db.deleteObjectStore(obn[i]);
-      }
-      
-      // We now have a fresh database, so define our object stores
-      db.createObjectStore("vars", {keyPath: "var_name"});
-      db.createObjectStore("cinfo", {keyPath: "cpv"});
-      db.createObjectStore("cread", {keyPath: "jyu"});
-      db.createObjectStore("words",
-        {keyPath: "wid", autoIncrement: true});
+    }
+    for(r in m_idx_jyu) {
+      // Sort each Jyutping index value in ascending numerical order
+      m_idx_jyu[r].sort(function(a, b) {
+        return a - b;
+      });
     }
     
-    // Function proceeds in the handler for successful open
-    dbo.onsuccess = function(ev) {
-      var tr, r;
-      
-      // Set the database handle and open flag
-      m_db = dbo.result;
-      m_conn = true;
-      
-      // Before we can do the initial transaction for synchronization,
-      // we need to know the dataver of our data files, so get that
-      // first
-      ctt_load.checkDataver(
-        function(dvr) {
-          
-          // OK, now we are ready to do our initial synchronization
-          // transaction; route the done call to our f_done handler, and
-          // route the reload call to reloadDB
-          syncTransaction(
-            dvr,
-            f_done,
-            function() {
-              // Callback if a reload is needed
-              reloadDB(f_done, f_err);
-            },
-            f_err
-          );
-        },
-        f_err
-      );
-    }
+    // Update state
+    m_built = true;
   }
   
   /*
@@ -1667,7 +1001,7 @@
     "wordQuery": wordQuery,
     "charQuery": charQuery,
     "seekCode": seekCode,
-    "initDB": initDB
+    "buildIndices": buildIndices
   };  
   
 }());
