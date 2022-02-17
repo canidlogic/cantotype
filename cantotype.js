@@ -47,6 +47,16 @@
   var m_conn = false;
   
   /*
+   * The image state when the database was first loaded, or -1 if not
+   * yet established.
+   * 
+   * This is established by the syncTransaction() function and must be
+   * established before any other transaction can be performed on the
+   * database.
+   */
+  var m_dbimage = -1;
+  
+  /*
    * The IndexedDB handle, only if m_conn is true.
    */
   var m_db;
@@ -84,6 +94,124 @@
     
     // Throw exception
     throw ("ctt_main:" + func_name + ":" + String(loc));
+  }
+  
+  /*
+   * Get a new transaction and run the transaction prefix so that it is
+   * properly synchronized.
+   * 
+   * m_conn must be true and m_dbimage must be greater than zero for
+   * this to work.
+   * 
+   * storeNames and mode are passed through to the IndexedDB function
+   * IDBDatabase.transaction(), except that the store "vars" is added
+   * to storeNames if not already present.
+   * 
+   * Once the transaction is created, this will verify that "image" is
+   * defined in the "vars" table with a value equal to m_dbimage.  If
+   * not, then the database is out of sync and f_err will be invoked
+   * with the string "DBSyncError".
+   * 
+   * The callback f_ready will be invoked with the newly prepped
+   * transaction object if successful, otherwise f_err will be invoked
+   * with a reason.
+   * 
+   * The transaction will also automatically have f_err registered as
+   * an error handler for both the abort and error events on the
+   * transaction.
+   * 
+   * See "Database.md" for more about how synchronization works.
+   * 
+   * Parameters:
+   * 
+   *   storeNames: string array - the stores that will be accessed
+   *   during the transaction, passed through to IndexedDB after adding
+   *   "vars" if missing
+   * 
+   *   mode : <any> - passed through to IndexedDB
+   * 
+   *   f_ready : function - callback invoked with the newly prepped
+   *   transaction if successful
+   * 
+   *   f_err : function - callback invoked with a reason if there is any
+   *   problem
+   */
+  function prepTrans(storeNames, mode, f_ready, f_err) {
+    
+    var func_name = "prepTrans";
+    var tr, r, op;
+    var need_vars, i;
+    
+    // Check state
+    if ((!m_conn) || (m_dbimage < 1)) {
+      fault(func_name, 50);
+    }
+    
+    // If storeNames is not an array, it might be a DOMStringList, in
+    // which case make an array copy of it
+    if (!(storeNames instanceof Array)) {
+      op = storeNames;
+      storeNames = [];
+      for(i = 0; i < op.length; i++) {
+        storeNames.push(op[i]);
+      }
+    }
+    
+    // Check parameters
+    if (!(storeNames instanceof Array)) {
+      fault(func_name, 100);
+    }
+    if ((typeof(f_ready) !== "function") ||
+        (typeof(f_err) !== "function")) {
+      fault(func_name, 110);
+    }
+    
+    // Check if we need to add "vars" to the list of stores
+    need_vars = true;
+    for(i = 0; i < storeNames.length; i++) {
+      if (storeNames[i] === "vars") {
+        need_vars = false;
+        break;
+      }
+    }
+    
+    // Add "vars" if necessary
+    if (need_vars) {
+      storeNames.push("vars");
+    }
+    
+    // Grab a new transaction
+    tr = m_db.transaction(storeNames, mode);
+    
+    // If we added "vars" to the array, remove it
+    if (need_vars) {
+      storeNames.pop();
+    }
+    
+    // Register error handler
+    tr.onabort = f_err;
+    tr.onerror = f_err;
+    
+    // Query for the "image" variable
+    r = tr.objectStore("vars").get("image");
+    r.onsuccess = function(ev) {
+    
+      // If "image" variable not defined, then synchronization error
+      if (!(r.result)) {
+        f_err("DBSyncError");
+        return;
+      }
+      
+      // Check whether image equal to stored image
+      if (r.result.var_value === m_dbimage) {
+        // Database still in sync, so we are ready
+        f_ready(tr);
+      
+      } else {
+        // Database not in sync, so synchronization error
+        f_err("DBSyncError");
+      }
+    };
   }
   
   /*
@@ -465,7 +593,8 @@
    * Reload the IndexedDB database from the data files.
    * 
    * m_conn must be true indicating an active database connection,
-   * however m_built must be false.
+   * however m_built must be false.  m_dbimage must also be greater than
+   * zero.
    * 
    * Loading is asynchronous, so you must provide callback functions to
    * invoke on success and on error.  The error function gets a reason.
@@ -480,10 +609,9 @@
   function reloadDB(f_done, f_err) {
     
     var func_name = "reloadDB";
-    var tr, r, i, f;
     
     // Check state
-    if (m_built || (!m_conn)) {
+    if (m_built || (!m_conn) || (m_dbimage < 1)) {
       fault(func_name, 50);
     }
     
@@ -493,43 +621,257 @@
       fault(func_name, 100);
     }
     
-    // Start a read-write transaction on all the object stores
-    tr = m_db.transaction(m_db.objectStoreNames, "readwrite");
-    
-    // Our first task is to drop all records from all object stores
-    i = 0;
-    f = function(ev) {
-      // Do clear if i is still a valid index, else proceed
-      if (i < m_db.objectStoreNames.length) {
-        // Clear the object store and increment i
-        r = tr.objectStore(m_db.objectStoreNames[i]).clear();
-        i++;
+    // Prep a read-write transaction on all the object stores
+    prepTrans(m_db.objectStoreNames, "readwrite",
+      function(tr) {
+        var r, i, f;
         
-        // Asynchronous callbacks
-        r.onerror = f_err;
-        r.onsuccess = f;
+        // When this transaction completes, all records will have been
+        // dropped from all stores except the "vars" store; we can then
+        // load all the records from the data files, each in a separate
+        // transaction
+        tr.oncomplete = function(ev) {
+          // Go through the data files and add everything to the
+          // database; proceed when everything completes successfully
+          ctt_load.go(
+            function(jsd, ff_done, ff_err) {
+              // @@TODO:
+              ff_done();
+            },
+            function(jsd, ff_done, ff_err) {
+              // @@TODO:
+              ff_done();
+            },
+            function() {
+              // OK, everything has been loaded into the database now
+              console.log("loading done");
+              
+              // @@TODO: set dataver
+              // @@TODO: update m_built before calling done callback
+            },
+            f_err
+          );
+        };
         
-      } else {
-        // We have now cleared all the object stores -- we now go
-        // through the data files and add everything to the database;
-        // proceed when everything completes successfully
-        ctt_load.go(
-          addCRecord,
-          addWRecord,
-          function() {
-            // OK, everything has been loaded into the database now; get
-            // a new read-write transaction on the vars table so we can
-            // record the new build version; we can't re-use the old one
-            // because it has become inactive by this point
-            tr = m_db.transaction("vars", "readwrite");
+        // Our first task is to drop all records from all object stores,
+        // except for the "vars" store
+        i = 0;
+        f = function(ev) {
+          // If i is valid AND the current object store name is "vars"
+          // then increment i to skip over the "vars" store
+          if ((i < m_db.objectStoreNames.length) &&
+              (m_db.objectStoreNames[i] === "vars")) {
+            i++;
+          }
+          
+          // Do clear if i is still a valid index, else let this
+          // transaction complete and code will continue in the
+          // completion handler for this transaction
+          if (i < m_db.objectStoreNames.length) {
+            // Clear the object store and increment i
+            r = tr.objectStore(m_db.objectStoreNames[i]).clear();
+            i++;
             
-            // @@TODO:
-            // @@TODO: update m_built before calling done callback
-          },
-          f_err);
+            // Asynchronous callbacks
+            r.onerror = f_err;
+            r.onsuccess = f;
+          }
+        };
+        f(null);
+        
+      },
+      f_err
+    );
+  }
+  
+  /*
+   * Perform the synchronization "initial transaction."
+   * 
+   * m_conn must be true indicating an active database connection,
+   * however m_built must be false.  Also, m_dbimage must be -1
+   * indicating that no image has been loaded yet.
+   * 
+   * This is the first transaction that must be performed after the
+   * IndexedDB database is opened.  See "Database.md" for further
+   * information.
+   * 
+   * The m_dbimage variable will be set by this procedure.
+   * 
+   * file_dataver is the dataver from the data file index.
+   * 
+   * This function proceeds asynchronously.  The f_ready callback is
+   * invoked if the database can now be used and no reload is necessary.
+   * The f_reload callback is invoked if the database needs to be
+   * reloaded before it can be used.  The f_err callback is invoked if
+   * there is an error, and it takes a "reason" parameter.
+   * 
+   * Exactly one of the three callbacks will be invoked by this function
+   * eventually.  Note that if f_reload is invoked, f_ready will NOT be
+   * invoked.
+   * 
+   * Parameters:
+   * 
+   *   file_dataver : string - the version from the data file index
+   * 
+   *   f_ready : function - callback if database is ready without reload
+   * 
+   *   f_reload : function - callback if database needs reload
+   * 
+   *   f_err : function - callback if error, takes reason argument
+   */
+  function syncTransaction(file_dataver, f_ready, f_reload, f_err) {
+    
+    var func_name = "syncTransaction";
+    var need_reload = false;
+    var tr, r;
+    
+    // Check state
+    if (m_built || (!m_conn) || (m_dbimage !== -1)) {
+      fault(func_name, 50);
+    }
+    
+    // Check parameters
+    if ((typeof(file_dataver) !== "string") ||
+        (typeof(f_ready) !== "function") ||
+        (typeof(f_reload) !== "function") ||
+        (typeof(f_err) !== "function")) {
+      fault(func_name, 100);
+    }
+    
+    // Our initial transaction is a read-write transaction on "vars"
+    tr = m_db.transaction(["vars"], "readwrite");
+    
+    // Set error handlers on the transaction; these will also be used if
+    // any of the component requests of the transaction fail, in which
+    // case the errors will bubble up to the transaction
+    tr.onabort = f_err;
+    tr.onerror = f_err;
+    
+    // The following handler will be run when the initial transaction is
+    // done; by this point, m_dbimage will be set and need_reload will
+    // be set appropriately
+    tr.oncomplete = function(ev) {
+      // At this point, m_dbimage should be set
+      if (m_dbimage < 1) {
+        f_err("Image check failed!");
+      }
+      
+      // Going by the need_reload flag, invoke the appropriate callback
+      if (need_reload) {
+        f_reload();
+      } else {
+        f_ready();
       }
     };
-    f(null);
+    
+    // Look for the "image" variable in the "vars" store
+    r = tr.objectStore("vars").get("image");
+    r.onsuccess = function(ev) {
+      // Check whether "image" was defined
+      if (!(r.result)) {
+        // "image" not defined, so we need to define it as 1
+        r = tr.objectStore("vars").add({
+          var_name: "image",
+          var_value: 1
+        });
+        r.onsuccess = function(evb) {
+          // We set "image" to 1, so now set our current database image
+          // number to 1
+          m_dbimage = 1;
+          
+          // Now check whether "dataver" is defined (it shouldn't be,
+          // but let's make sure)
+          r = tr.objectStore("vars").get("dataver");
+          r.onsuccess = function(evc) {
+            // Check if "dataver" is defined
+            if (r.result) {
+              // "dataver" is defined, so make a note in the console
+              // because this wasn't supposed to happen
+              console.log("Warning: dataver present without image!");
+              
+              // Delete the "dataver" record
+              r = tr.objectStore("vars").delete("dataver");
+              r.onsuccess = function(evd) {
+                // We are ready now, set the reload flag and let this
+                // transaction complete; code continues in the
+                // "complete" event handler on the transaction
+                need_reload = true;
+              };
+              
+            } else {
+              // "dataver" not defined so we are OK now, set the reload
+              // flag and let this transaction complete; code continues
+              // in the "complete" event handler on the transaction
+              need_reload = true;
+            }
+          };
+        };
+        
+      } else {
+        // "image" is defined, so grab its value as the current database
+        // image state
+        m_dbimage = r.result.var_value;
+        
+        // Now query for "dataver"
+        r = tr.objectStore("vars").get("dataver");
+        r.onsuccess = function(evb) {
+          // Check whether "dataver" is defined
+          if (!(r.result)) {
+            // "dataver" not defined so database data is incomplete and
+            // needs to be freshly reloaded; increment the current image
+            // number
+            m_dbimage++;
+            
+            // Store the incremented image
+            r = tr.objectStore("vars").put({
+              var_name: "image",
+              var_value: m_dbimage
+            });
+            r.onsuccess = function(evc) {
+              // We are now ready to reload the database, so let this
+              // transaction complete; code continues in the "complete"
+              // event handler on the transaction
+              need_reload = true;
+            };
+            
+          } else {
+            // "dataver" defined so check how database version compares
+            // to version in data files
+            if (r.result.var_value >= file_dataver) {
+              // Database version is same or newer than version stored
+              // in files, so we can use it without reloading; clear the
+              // reload flag and let this transaction complete; code
+              // continues in the "complete" event handler on the
+              // transaction
+              need_reload = false;
+              
+            } else {
+              // Data files have newer version than database so we need
+              // first to increment the image number
+              m_dbimage++;
+              
+              // Store the incremented image
+              r = tr.objectStore("vars").put({
+                var_name: "image",
+                var_value: m_dbimage
+              });
+              r.onsuccess = function(evc) {
+                // We need to redo the database, so delete the dataver
+                r = tr.objectStore("vars").delete("dataver");
+                r.onsuccess = function(evd) {
+                
+                  // We are now ready to redo the database, so set the
+                  // reload flag and let this transaction complete; code
+                  // continues in the "complete" event handler on the
+                  // transaction
+                  need_reload = true;
+                };
+              };
+            }
+          }
+        };
+      }
+    };
   }
   
   /*
@@ -1225,40 +1567,27 @@
       m_db = dbo.result;
       m_conn = true;
       
-      // Start a read-only transaction on "vars" to check whether a data
-      // reload is necessary
-      tr = m_db.transaction(["vars"], "readonly");
-      
-      // First we want to look for the "dataver" variable in the "vars"
-      // store
-      r = tr.objectStore("vars").get("dataver");
-      r.onerror = function(ev) {
-        f_err("Query 100 failed");
-      }
-      r.onsuccess = function(ev) {
-        
-        // Check if we found the "dataver" variable
-        if (r.result) {
-          // Have a current dataver, so next get the dataver from our
-          // data file index
-          ctt_load.checkDataver(
-            function(dvr) {
-              // If current dataver is greater than or equal to dataver
-              // in data file index, the data in our database is already
-              // good so we can finish here; else, we need to reload
-              if (dvr <= r.result.var_value) {
-                f_done();
-              } else {
-                reloadDB(f_done, f_err);
-              }
-              
-            }, f_err);
+      // Before we can do the initial transaction for synchronization,
+      // we need to know the dataver of our data files, so get that
+      // first
+      ctt_load.checkDataver(
+        function(dvr) {
           
-        } else {
-          // No current dataver, so we definitely need reload
-          reloadDB(f_done, f_err);
-        }
-      }
+          // OK, now we are ready to do our initial synchronization
+          // transaction; route the done call to our f_done handler, and
+          // route the reload call to reloadDB
+          syncTransaction(
+            dvr,
+            f_done,
+            function() {
+              // Callback if a reload is needed
+              reloadDB(f_done, f_err);
+            },
+            f_err
+          );
+        },
+        f_err
+      );
     }
   }
   
