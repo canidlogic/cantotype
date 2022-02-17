@@ -6,7 +6,6 @@ use warnings FATAL => "utf8";
 # Non-core dependencies
 #
 use JSON::Tiny qw(decode_json encode_json);
-use PerlIO::gzip;
 
 # Core dependencies
 #
@@ -14,106 +13,37 @@ use File::Spec;
 
 =head1 NAME
 
-canto_compile.pl - Compile data files for Cantotype.
+canto_compile_char.pl - Compile character database for Cantotype.
 
 =head1 SYNOPSIS
 
-  canto_compile.pl
-    -hkscs HKSCS.json
-    -unihan Unihan/folder
-    -cedict cedict.txt
-    -outdir out/dir
-    -dataver 2022-02-15:001
-    -csplit 2
-    -wsplit 5
+  canto_compile_char.pl -hkscs HKSCS.json -unihan Unihan/folder > out.js
 
 =head1 DESCRIPTION
 
-This script reads data sources from Hong Kong Supplemental Character Set
-(HKSCS), Unihan, and CC-CEDICT and uses this data to compile the data
-files for Cantotype.
+This script reads data sources from Unihan and the Hong Kong
+Supplemental Character Set (HKSCS), and uses this data to compile the
+uncompressed character database file for Cantotype.
 
-The paths to the HKSCS supplement JSON file and the decompressed
-CC-CEDICT data file are given using the C<-hkscs> and C<-cedict>
-options, respectively.  The Unihan database is split across multiple
-files.  The folder containing these Unihan files is given using the
-C<-unihan> option, and the files within that folder must have the same
-names that they had in the source C<unihan.zip> file.  See the section
-on "Data sources" below for further information where to obtain these
-data sources.
+The paths to the HKSCS supplement JSON file is given using the C<-hkscs>
+option.  The Unihan database is split across multiple files.  The folder
+containing these Unihan files is given using the C<-unihan> option, and
+the files within that folder must have the same names that they had in
+the source C<unihan.zip> file.  See the section on "Data sources" below
+for further information where to obtain these data sources.
 
-This script generates multiple data files, along with a data index file.
-All these files will be written into the output directory that is given
-with the C<-outdir> parameter.
-
-The C<-dataver> parameter gives the data version that will be included
-in the data file index.  This is needed so that Cantotype clients can
-detect whether data files have changed and need to be updated.  The
-format must be C<DDDD-DD-DD:DDD> where each C<D> is a decimal digit.  It
-is recommended but not required that the first part of the format be a
-C<YYYY-MM-DD> date and the second part of the format be used to track
-versions made within the same day.  The only requirement is that newer
-versions compare as greater than older versions.
-
-The C<-csplit> and C<-wsplit> options are optional, and default to
-values of one if not given.  The C<-csplit> option indicates how many
-file parts the character data should be split into, while the C<-wsplit>
-option indicates how many file parts the word data should be split into.
-This can be used to split the data files into reasonable-sized chunks to
-make the Cantotype loading process smoother.  The minimum split value is
-one and the maximum split value is 999.
-
-In the output directory, all files are JSON data files that are
-compressed with GZip.  Cantotype expects to download these files in the
-compressed format, so they should not be decompressed.  The data index
-file will have the name C<cantotype_data_index.gz>.  All character data
-files will have the name format C<cantotype_data_cNNN.gz> where C<NNN>
-is a three-digit, zero-padded part number that begins with part one.
-All word data files will have the name format C<cantotype_data_wNNN.gz>
-where C<NNN> is a three-digit, zero-padded part number that begins with
-part one.
-
-The character data files and word data files must keep their names as-is
-because their filenames are referenced in the data index file.  However,
-the data index file can be renamed.
+The uncompressed character database JSON file will be written to
+standard output.  Note that Cantotype expects this file to be compressed
+with GZip.
 
 =head2 Data file format
 
-All data files are stored in the JSON format, and then compressed with
-Gzip.
+The character data table is a JSON array where each element of the array
+is a data record.  Records are not stored in any particular order.
 
-The character data table and word data table are both JSON arrays where
-each element of the array is a data record.  Records are not stored in
-any particular order.
-
-Since both tables may potentially be very large, they may be split
-across multiple files.  Each individual file must be a fully valid JSON
-file.  Each file part is a JSON array that stores only a subset of the
-records.  All of the file parts taken together define the total
-collection of records.
-
-There is also a data index file.  This file simply stores the filenames
-of all the component data files, as well as the data version number.
-It is also a compressed JSON file.  The data index JSON file stores a
-JSON object that has three properties:  C<dataver>, C<charlist>, and
-C<wordlist>.  The C<dataver> property is a string, the format of which
-was described earlier.  The other two properties have values that are
-arrays of strings.  The C<charlist> property gives the filenames of all
-the data files that define the character table, while the C<wordlist>
-property gives the filenames of all the data files that define the word
-table.
-
-The data index file only determines the filenames of the component data
-files, not their complete URLs.  The URL of the directory that contains
-the component data files is determined by the configuration script
-generated by C<canto_config.pl>.  This allows the same set of generated
-data files to be used regardless of their specific location.
-
-=head3 Character table format
-
-For the character table array, each record is a JavaScript object whose
-properties define the properties of a specific Chinese character.  The
-following properties are always defined:
+Each record is a JavaScript object whose properties define the
+properties of a specific Chinese character.  The following properties
+are always defined:
 
 =over 4
 
@@ -143,48 +73,6 @@ A string providing a definition gloss of the character's meaning, in
 English.  This is taken from the Unihan database, so it is not meant to
 be an actual Chinese word definition, but rather just a gloss for that
 specific character.
-
-=back
-
-=head3 Word table format
-
-For the word table array, each record is itself an array.  The elements
-of the array are as follows:
-
-=over 4
-
-=item Element 0
-
-String value holding the traditional character(s) for the word.  For
-western names, double-width middle dots may be present.  For proverbs,
-double-width commas may be present.
-
-=item Element 1
-
-String value holding the simplified character(s) for the word.  For
-western names, double-width middle dots may be present.  For proverbs,
-double-width commas may be present.
-
-=item Element 2
-
-Array of strings indicating the Mandarin Pinyin reading of the word.  If
-the array has multiple elements, this means a multi-syllable
-pronunication.  It does not mean each element is an alternative.  Pinyin
-syllables may have their initial letters capitalized for proper names.
-Diacritic marks are not used.  Instead, tone is represented by an
-integer value 1-5 suffixed to the syllable, with 5 representing neutral
-tone.  Also, the U-umlaut character is represented by the letter U
-followed by a colon.  Finally, if a double-width middle dot or a
-double-width comma was part of the prior record elements, those
-punctuation marks will appear as their own element within this reading
-array, with a regular middle dot and regular comma used instead of the
-double-width varieties.
-
-=item Element 3
-
-Array of strings, each containing a separate English definition of the
-Chinese word.  Chinese characters might be included within these
-definitions, so it is not safe to assume they are ASCII.
 
 =back
 
@@ -237,10 +125,6 @@ procedure is smart enough that if the datasets are fixed in the futures,
 the corrections will no longer be applied in the future if no longer
 necessary.  See C<correct_cmap> function for details of the corrections
 that are applied.
-
-Finally, the script requires the CC-CEDICT Chinese dictionary data file.
-This file is available for download from C<www.mdbg.net>.  You must
-decompress it before passing it to this script.
 
 =cut
 
@@ -845,87 +729,6 @@ sub add_defns {
   close($fhd);
 }
 
-# Given an array reference, add dictionary entries from the CC-CEDICT
-# dictionary.
-#
-# Each dictionary entry is parsed from the CC-CEDICT data file and then
-# pushed onto the end of the given array reference.
-#
-# Parameters:
-#
-#   1 : array ref - reference to the dictionary array
-#
-#   2 : string - path to the CC-CEDICT data file
-#
-sub import_dictionary {
-  # Check parameter count
-  ($#_ == 1) or die "Wrong number of parameters, stopped";
-  
-  # Get parameters and check types
-  my $dm        = shift;
-  my $data_path = shift;
-  
-  (ref($dm) eq 'ARRAY') or die "Wrong parameter type, stopped";
-  $data_path = "$data_path";
-  
-  # Open the dictionary file so we can import records
-  open(my $fhd, "< :utf8", $data_path) or
-    die "Failed to open '$data_path', stopped";
-  
-  # Process dictionary file line by line, and add definition records to
-  # the array reference
-  while (<$fhd>) {
-    # Skip line if blank
-    if (/^[ \t\r\n]*$/u) {
-      next;
-    }
-    
-    # Skip line if first character is # indicating comment
-    if (/^[ \t]*#/u) {
-      next;
-    }
-    
-    # Parse the dictionary record
-    (/^([^ ]+) ([^ ]+) \[([^\]]*)\] \/([^\r\n]*)\/[ \t\r\n]*$/u) or
-      die "Invalid CC-CEDICT record '$_', stopped";
-    
-    my $rf_trad = $1;
-    my $rf_simp = $2;
-    my $rf_piny = $3;
-    my $rf_dfns = $4;
-
-    # Traditional and simplified reading fields are as-is strings
-    $rf_trad = "$rf_trad";
-    $rf_simp = "$rf_simp";
-    
-    # Begin by trimming leading and trailing whitespace from pinyin
-    # string
-    $rf_piny = "$rf_piny";
-    $rf_piny =~ s/^[ \t]+//gu;
-    $rf_piny =~ s/[ \t]+$//gu;
-    
-    # Split pinyin reading into entities according to whitespace
-    # separators
-    my @pya = split " ", $rf_piny;
-    
-    # For definitions string, split by "/" marks (the opening and
-    # closing slash marks are not included in the definitions string)
-    my @dfa = split /\//, $rf_dfns;
-    
-    # Trim each definition of leading and trailing whitespace
-    for(my $i = 0; $i <= $#dfa; $i++) {
-      $dfa[$i] =~ s/^[ \t]+//gu;
-      $dfa[$i] =~ s/[ \t]+$//gu;
-    }
-
-    # Push the dictionary record to the end of the dictionary array
-    push @$dm, ([$rf_trad, $rf_simp, \@pya, \@dfa]);
-  }
-  
-  # Close the dictionary file
-  close($fhd);
-}
-
 # ==================
 # Program entrypoint
 # ==================
@@ -978,126 +781,14 @@ for(my $i = 0; $i <= $#ARGV; $i++) {
     # Store parameter
     $script_param{'unihan'} = "$p";
     
-  } elsif ($p eq "-cedict") { # ----------------------------------------
-    # Make sure at least one extra parameter
-    ($i < $#ARGV) or die "-cedict requires parameter, stopped";
-    
-    # Advance to next parameter and get it
-    $i++;
-    $p = $ARGV[$i];
-    
-    # Check that parameter not already defined
-    (not exists $script_param{'cedict'}) or 
-      die "-cedict defined twice, stopped";
-    
-    # Check that file exists
-    (-f $p) or die "Can't find file '$p', stopped";
-    
-    # Store parameter
-    $script_param{'cedict'} = "$p";
-    
-  } elsif ($p eq "-outdir") { # ----------------------------------------
-    # Make sure at least one extra parameter
-    ($i < $#ARGV) or die "-outdir requires parameter, stopped";
-    
-    # Advance to next parameter and get it
-    $i++;
-    $p = $ARGV[$i];
-    
-    # Check that parameter not already defined
-    (not exists $script_param{'outdir'}) or 
-      die "-outdir defined twice, stopped";
-    
-    # Check that directory exists
-    (-d $p) or die "Can't find directory '$p', stopped";
-    
-    # Store parameter
-    $script_param{'outdir'} = "$p";
-    
-  } elsif ($p eq "-dataver") { # ---------------------------------------
-    # Make sure at least one extra parameter
-    ($i < $#ARGV) or die "-outdir requires parameter, stopped";
-    
-    # Advance to next parameter and get it
-    $i++;
-    $p = $ARGV[$i];
-    
-    # Check that parameter not already defined
-    (not exists $script_param{'dataver'}) or 
-      die "-dataver defined twice, stopped";
-    
-    # Check parameter format
-    ($p =~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}:[0-9]{3}$/) or
-      die "-dataver format invalid, stopped";
-    
-    # Store parameter
-    $script_param{'dataver'} = "$p";
-    
-  } elsif ($p eq "-csplit") { # ----------------------------------------
-    # Make sure at least one extra parameter
-    ($i < $#ARGV) or die "-csplit requires parameter, stopped";
-    
-    # Advance to next parameter and get it
-    $i++;
-    $p = $ARGV[$i];
-    
-    # Check that parameter not already defined
-    (not exists $script_param{'csplit'}) or 
-      die "-csplit defined twice, stopped";
-    
-    # Check format
-    ($p =~ /^[1-9][0-9]*$/) or die "Invalid -csplit value, stopped";
-    
-    # Convert to integer and check range
-    $p = int($p);
-    (($p > 0) and ($p < 1000)) or
-      die "-csplit value out of range, stopped";
-    
-    # Store parameter (as integer)
-    $script_param{'csplit'} = $p;
-    
-  } elsif ($p eq "-wsplit") { # ----------------------------------------
-    # Make sure at least one extra parameter
-    ($i < $#ARGV) or die "-wsplit requires parameter, stopped";
-    
-    # Advance to next parameter and get it
-    $i++;
-    $p = $ARGV[$i];
-    
-    # Check that parameter not already defined
-    (not exists $script_param{'wsplit'}) or 
-      die "-wsplit defined twice, stopped";
-    
-    # Check format
-    ($p =~ /^[1-9][0-9]*$/) or die "Invalid -wsplit value, stopped";
-    
-    # Convert to integer and check range
-    $p = int($p);
-    (($p > 0) and ($p < 1000)) or
-      die "-wsplit value out of range, stopped";
-    
-    # Store parameter (as integer)
-    $script_param{'wsplit'} = $p;
-    
   } else { # -----------------------------------------------------------
     die "Unrecognized parameter '$p', stopped";
   }
 }
 
-# Define default values of csplit and wsplit if they were not explicitly
-# passed to the script
-#
-if (not exists $script_param{'csplit'}) {
-  $script_param{'csplit'} = 1;
-}
-if (not exists $script_param{'wsplit'}) {
-  $script_param{'wsplit'} = 1;
-}
-
 # Make sure all necessary parameters are now defined
 #
-for my $p ('hkscs', 'unihan', 'cedict', 'outdir',
-            'csplit', 'wsplit', 'dataver') {
+for my $p ('hkscs', 'unihan') {
   (exists $script_param{$p}) or
     die "Missing parameter -$p, stopped";
 }
@@ -1173,151 +864,17 @@ for my $k (@cmap_keys) {
   push @car, ($cmap{$k});
 }
 
-# Import the CC-CEDICT dictionary
-#
-my @dar;
-import_dictionary(\@dar, $script_param{'cedict'});
-
-# Make sure neither table is empty
+# Make sure table isn't empty
 #
 ($#car > 0) or die "Character table is empty, stopped";
-($#dar > 0) or die "Word table is empty, stopped";
 
-# If the character split value is larger than the number of character
-# records, set it to the number of character records
+# Encode table into JSON
 #
-if ($script_param{'csplit'} > $#car + 1) {
-  $script_param{'csplit'} = $#car + 1;
-}
-
-# If the word split value is larger than the number of word records, set
-# it to the number of word records
+my $jss = encode_json(\@car);
+  
+# Write JSON to output
 #
-if ($script_param{'wsplit'} > $#dar + 1) {
-  $script_param{'wsplit'} = $#dar + 1;
-}
-
-# Get the volume and directory components to the output directory
-#
-(my $outdir_vol, my $outdir_path, undef) =
-  File::Spec->splitpath($script_param{'outdir'}, 1);
-
-# Generate the paths and filenames to all the character data files and
-# all the word data files; each array element is a subarray where the
-# first element of the subarray is the path to the file to generate on
-# the local file system and the second element of the subarray is the
-# filename that will be recorded in the data file index
-# 
-my @car_files;
-my @dar_files;
-
-for(my $i = 1; $i <= $script_param{'csplit'}; $i++) {
-  my $fname = sprintf("cantotype_data_c%03d.gz", $i);
-  
-  push @car_files, ([
-    File::Spec->catpath($outdir_vol, $outdir_path, $fname),
-    $fname
-  ]);
-}
-
-for(my $i = 1; $i <= $script_param{'wsplit'}; $i++) {
-  my $fname = sprintf("cantotype_data_w%03d.gz", $i);
-  
-  push @dar_files, ([
-    File::Spec->catpath($outdir_vol, $outdir_path, $fname),
-    $fname
-  ]);
-}
-
-# Generate the data file index object
-#
-my %dfix;
-
-$dfix{'charlist'} = [];
-$dfix{'wordlist'} = [];
-$dfix{'dataver'}  = $script_param{'dataver'};
-
-for(my $i = 0; $i < $script_param{'csplit'}; $i++) {
-  push @{$dfix{'charlist'}}, ($car_files[$i][1]);
-}
-for(my $i = 0; $i < $script_param{'wsplit'}; $i++) {
-  push @{$dfix{'wordlist'}}, ($dar_files[$i][1]);
-}
-
-# Encode the data file index object to JSON and then write it to the
-# index file with gzip compression
-#
-my $dfix_json = encode_json(\%dfix);
-open(
-    my $fhi, "> :gzip",
-    File::Spec->catpath(
-        $outdir_vol, $outdir_path, "cantotype_data_index.gz"))
-  or die "Can't create 'cantotype_data_index.gz' for writing, stopped";
-
-print { $fhi } "$dfix_json\n";
-close($fhi);
-
-# Generate all the character data parts and write to output directory
-#
-my $per_part = int(($#car + 1) / $script_param{'csplit'});
-for(my $i = 0; $i < $script_param{'csplit'}; $i++) {
-  
-  # Compute the starting array index of this part
-  my $start_i = $per_part * $i;
-  
-  # Usually, the number of records in a part is equal to $per_part, but
-  # in the very last part, it is equal to all remaining records
-  my $r_count = $per_part;
-  if ($i >= $script_param{'csplit'} - 1) {
-    $r_count = ($#car + 1) - $start_i;
-  }
-  ($r_count > 0) or die "Error splitting parts, stopped";
-  
-  # Grab the subset of records we are putting into this part
-  my $last_i = $start_i + $r_count - 1;
-  my @rss = @car[$start_i .. $last_i];
-
-  # Encode subset into JSON
-  my $jss = encode_json(\@rss);
-  
-  # Write the JSON to the data file, using gzip compression
-  open(my $fhp, "> :gzip", $car_files[$i][0]) or
-    die "Can't create '$car_files[$i][0]' for writing, stopped";
-  
-  print { $fhp } "$jss\n";
-  close($fhp);
-}
-
-# Generate all the word data parts and write to output directory
-#
-$per_part = int(($#dar + 1) / $script_param{'wsplit'});
-for(my $i = 0; $i < $script_param{'wsplit'}; $i++) {
-  
-  # Compute the starting array index of this part
-  my $start_i = $per_part * $i;
-  
-  # Usually, the number of records in a part is equal to $per_part, but
-  # in the very last part, it is equal to all remaining records
-  my $r_count = $per_part;
-  if ($i >= $script_param{'wsplit'} - 1) {
-    $r_count = ($#dar + 1) - $start_i;
-  }
-  ($r_count > 0) or die "Error splitting parts, stopped";
-  
-  # Grab the subset of records we are putting into this part
-  my $last_i = $start_i + $r_count - 1;
-  my @rss = @dar[$start_i .. $last_i];
-
-  # Encode subset into JSON
-  my $jss = encode_json(\@rss);
-  
-  # Write the JSON to the data file, using gzip compression
-  open(my $fhp, "> :gzip", $dar_files[$i][0]) or
-    die "Can't create '$dar_files[$i][0]' for writing, stopped";
-  
-  print { $fhp } "$jss\n";
-  close($fhp);
-}
+print "$jss\n";
 
 =head1 AUTHOR
 
