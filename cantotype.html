@@ -1142,10 +1142,14 @@ var canto_words = [];
     var eSplash = document.getElementById("divSplash");
     
     // Asynchronously initialize the database before proceeding
-    ctt_main.initDB(
+    ctt_load.initDB(
       function() {
         // Callback invoked when database initialization is successful
         var e, eTypeBox, eErrLine;
+    
+        // @@TODO:
+        console.log("all ready.");
+        return;
     
         // Add an event handler to the typing box that updates the
         // position for insertion whenever focus is lost from the
@@ -1187,14 +1191,17 @@ var canto_words = [];
         }
         e.style.display = "block";
       },
-      
+      function(report) {
+        // Callback invoked for a progress report
+        // @@TODO:
+        console.log("Progress: " + report);
+      },
       function(reason) {
         // Callback invoked if there was an error
         console.log("Database init failed: " + reason);
         if (eSplash != null) {
           eSplash.innerHTML =
             "ERROR: Database initialization failed!<br/>" +
-            "(Check that you are not in private browsing mode)<br/>" +
             "<br/>" +
             "Reason: " + htmlEsc(reason);
         }
