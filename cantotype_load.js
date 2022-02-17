@@ -18,6 +18,24 @@
 (function() {
   
   /*
+   * Local data
+   * ==========
+   */
+  
+  /*
+   * Flag that is set to true once initDB() has completed.
+   */
+  var m_loaded = false;
+  
+  /*
+   * Object mapping cached file names to raw array buffers storing the
+   * data, which may still be compressed.
+   * 
+   * Only available if m_loaded.  This does not include the index file.
+   */
+  var m_files;
+  
+  /*
    * Local functions
    * ===============
    */
@@ -263,14 +281,181 @@
    *   f_err : function called to report error with a reason parameter
    */
   function dataPassTwo(jsi, f_done, f_status, f_err) {
-    // @@TODO:
-    f_done();
+    
+    var func_name = "dataPassTwo";
+    var ka, i, f;
+    var req, raw_data;
+    var str, all_bytes, so_far;
+    
+    // Check parameters, except jsi
+    if ((typeof(f_done) !== "function") ||
+        (typeof(f_status) !== "function") ||
+        (typeof(f_err) !== "function")) {
+      fault(func_name, 100);
+    }
+    
+    // Get all keys of the index
+    ka = Object.keys(jsi);
+    
+    // Initialize download statistics
+    so_far = 0;
+    all_bytes = 0;
+    
+    for(i = 0; i < ka.length; i++) {
+      if (jsi[ka[i]].length < 3) {
+        all_bytes = all_bytes + jsi[ka[i]][1];
+      }
+    }
+    
+    // Define a callback function that will be invoked for each key in
+    // the index using i as an iterator and then invoke it the first
+    // time
+    i = 0;
+    f = function() {
+      
+      // Skip over any entries that have been already downloaded
+      while (i < ka.length) {
+        if (jsi[ka[i]].length > 2) {
+          i++;
+        } else {
+          break;
+        }
+      }
+      
+      // If there are no more keys left to process, then we are done
+      if (i >= ka.length) {
+        f_done();
+        return;
+      }
+      
+      // If we got here, we have another entry to process, so first of
+      // all send a progress update, ignoring errors from that
+      try {
+        if (all_bytes > 0) {
+          str = "Downloading ... ";
+          str = str + 
+                  (Math.floor((so_far / all_bytes) * 100)).toString(10);
+          str = str + "%";
+        } else {
+          str = "Downloading...";
+        }
+        f_status(str);
+      } catch (ex) {
+        // Ignore status report errors
+      }
+      
+      // Create a request to download the binary file
+      req = new XMLHttpRequest();
+      req.open("GET", canto_config.data_base + ka[i]);
+      req.responseType = "arraybuffer";
+      req.overrideMimeType("application/octet-stream");
+      
+      // Add an event to monitor download progress and give status
+      // updates
+      req.onprogress = function(evp) {
+        // Wrap in a try-catch because we can ignore status update
+        // errors
+        try {
+          if (all_bytes > 0) {
+            str = "Downloading ... ";
+            str = str +
+                  (Math.floor(((so_far + evp.loaded) / all_bytes)
+                      * 100)).toString(10);
+            str = str + "%";
+          } else {
+            str = "Downloading...";
+          }
+          f_status(str);
+          
+        } catch (exp) {
+          // Ignore progress report errors
+        }
+      };
+      
+      // Function continues in callback when the request is done
+      req.onreadystatechange = function() {
+        
+        // Only interested in the callback if request is done
+        if (req.readyState === XMLHttpRequest.DONE) {
+          // Check whether request was successful
+          if (req.status === 200) {
+            // We got all the binary data, so retrieve it
+            raw_data = req.response;
+            
+            // Update the download statistics
+            so_far = so_far + jsi[ka[i]][1];
+            
+            // Add the raw data to the current record
+            jsi[ka[i]].push(raw_data);
+            
+            // Increment i and do next loop
+            i++;
+            f();
+          
+          } else {
+            // Failed to download
+            f_err("Failed to download " +
+                  canto_config.data_base + ka[i]);
+          }
+        }
+      };
+      
+      // Asynchronously start the download
+      req.send(null);
+    };
+    f();
   }
   
   /*
    * Public functions
    * ================
    */
+  
+  /*
+   * Decompress, parse, and return a JSON data file that has been loaded
+   * by this module.
+   * 
+   * You must use initDB() first and have that return through the
+   * f_ready callback before this function can be used.
+   * 
+   * Parameters:
+   * 
+   *   fname : string - the name of the file to load
+   * 
+   * Return:
+   * 
+   *   the parsed representation of that JSON file
+   */
+  function jsonData(fname) {
+    
+    var func_name = "jsonData";
+    var js;
+    
+    // Check state
+    if (!m_loaded) {
+      fault(func_name, 50);
+    }
+    
+    // Check parameter
+    if (typeof(fname) !== "string") {
+      fault(func_name, 100);
+    }
+    
+    // Check that we have the data file
+    if (!(fname in m_files)) {
+      throw("Can't find requested data file '" + fname + "'");
+    }
+    
+    // Try to decompress and parse JSON
+    try {
+      js = JSON.parse(pako.inflate(m_files[fname], {"to": "string"}));
+    } catch (ex) {
+      throw("Can't load JSON from data file '" + fname + "'");
+    }
+    
+    // Return parsed data
+    return js;
+  }
   
   /*
    * Asynchronously load all database files from HTTP and the IndexedDB
@@ -297,6 +482,7 @@
   function initDB(f_ready, f_status, f_err) {
     
     var func_name = "initDB";
+    var k;
     
     // Check parameters
     if ((typeof(f_ready) !== "function") ||
@@ -337,6 +523,16 @@
                       console.log("Failed to syncCache.");
                     }
                     
+                    // Our data index file has all the data, so now copy
+                    // that into m_files
+                    m_files = {};
+                    for(k in js_index) {
+                      m_files[k] = js_index[k][2];
+                    }
+                    
+                    // Set loaded flag
+                    m_loaded = true;
+                    
                     // We can now invoke the completion callback
                     f_ready();
                     
@@ -352,7 +548,24 @@
           function() {
             // IndexedDB not available, so we just perform the second
             // pass to load everything
-            dataPassTwo(js_index, f_ready, f_status, f_err);
+            dataPassTwo(js_index,
+              function() {
+                // Our data index file has all the data, so now copy
+                // that into m_files
+                m_files = {};
+                for(k in js_index) {
+                  m_files[k] = js_index[k][2];
+                }
+                
+                // Set loaded flag
+                m_loaded = true;
+                
+                // Invoke ready callback
+                f_ready();
+                
+              },
+              f_status, f_err
+            );
           }
         );
         
@@ -371,6 +584,7 @@
    * All exports are declared within a global "ctt_main" object.
    */
   window.ctt_load = {
+    "jsonData": jsonData,
     "initDB": initDB
   };
 
