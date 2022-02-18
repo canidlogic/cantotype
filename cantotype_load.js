@@ -36,6 +36,15 @@
   var m_files;
   
   /*
+   * Object mapping cached file names to object URLs for WOFF blobs that
+   * have been defined for them.
+   * 
+   * Only available if m_loaded.  Only includes entries for files that
+   * have actually been requested as WOFF blobs URLs.
+   */
+  var m_woffs;
+  
+  /*
    * Local functions
    * ===============
    */
@@ -504,6 +513,63 @@
   }
   
   /*
+   * Store a file of the given name into a Blob of type font/woff and
+   * return an object URL that can be used to access it.
+   * 
+   * Object URLs are cached, so that if the same file name is requested
+   * multiple times, the same object URL will be returned for each
+   * request.
+   * 
+   * You must use initDB() first and have that return through the
+   * f_ready callback before this function can be used.
+   * 
+   * Parameters:
+   * 
+   *   fname : string - the name of the file to load
+   * 
+   * Return:
+   * 
+   *   an object URL to a WOFF blob for this file
+   */
+  function woffURL(fname) {
+    
+    var func_name = "woffURL";
+    var b;
+    
+    // Check state
+    if (!m_loaded) {
+      fault(func_name, 50);
+    }
+    
+    // Check parameter
+    if (typeof(fname) !== "string") {
+      fault(func_name, 100);
+    }
+    
+    // If we already have this object URL cached, return it
+    if (fname in m_woffs) {
+      return m_woffs[fname];
+    }
+    
+    // Not cached yet, so check that we have the data file
+    if (!(fname in m_files)) {
+      throw("Can't find requested data file '" + fname + "'");
+    }
+    
+    // Turn the data file into a WOFF blob
+    b = new Blob([m_files[fname]], {"type": "text/css"});
+    
+    // Create an object URL for the WOFF blob
+    b = URL.createObjectURL(b);
+    
+    // Add the object URL to the WOFF blob URL cache
+    m_woffs[fname] = b;
+    
+    // Return URL
+    return b;
+  }
+  
+  /*
    * Asynchronously load all database files from HTTP and the IndexedDB
    * cache, and update the IndexedDB cache if possible.
    * 
@@ -576,6 +642,9 @@
                       m_files[k] = js_index[k][2];
                     }
                     
+                    // Start the WOFF map at empty
+                    m_woffs = {};
+                    
                     // Set loaded flag
                     m_loaded = true;
                     
@@ -602,6 +671,9 @@
                 for(k in js_index) {
                   m_files[k] = js_index[k][2];
                 }
+                
+                // Start the WOFF map at empty
+                m_woffs = {};
                 
                 // Set loaded flag
                 m_loaded = true;
@@ -632,6 +704,7 @@
   window.ctt_load = {
     "jsonData": jsonData,
     "textData": textData,
+    "woffURL": woffURL,
     "initDB": initDB
   };
 
