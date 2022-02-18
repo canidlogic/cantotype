@@ -78,6 +78,7 @@ All in the same directory on the HTTP server, you need the following files:
 - `cantotype.js` - the main program module
 - `cantotype_load.js` - the data loading module
 - `cantotype_config.js` - the generated configuration script
+- `cantotype_ui.js` - the presentation tier module
 - `cantotype_style.css` - the CSS stylesheet
 - `pako_inflate.js` - the Pako GZip decompressor
 
