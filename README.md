@@ -36,8 +36,6 @@ This allows you to determine how common a character is by the way it is rendered
 
 Put the two GZipped character databases and the WOFF fonts you created in the preceding steps into a single directory that will serve as the data directory for Cantotype.
 
-Then, copy the CSS template file `cantotype_style.csst` into the data directory.  It is recommended that you rename it `cantotype_css`.  Compress it with `gzip` to get `cantotype_css.gz`.
-
 You must now create a data index for all these files in the data directory.  Within the data directory, create a JSON text file that will serve as the index.  This JSON text file stores a JSON object.  Each property name of the JSON object matches the name of a data file in the directory.  Each property value is an array of two values:  the first is a string _revision code_ and the second is the size of the file in bytes as an integer.  For compressed files, use the compressed file size, not the decompressed file size.  Do not include the data index file itself within the data index.
 
 An example JSON data index file is shown here:
@@ -45,7 +43,6 @@ An example JSON data index file is shown here:
     {
       "cantotype_chardb.gz": ["2022-02-17:001", 428188],
       "cantotype_worddb.gz": ["2022-02-17:001", 3962377],
-      "cantotype_css.gz": ["2022-02-17:001", 624],
       "freehk.woff": ["2022-02-17:001", 3729996],
       "notosanshk.woff": ["2022-02-17:001", 4900632],
       "lastresort.woff": ["2022-02-17:001", 616672]
@@ -81,6 +78,7 @@ All in the same directory on the HTTP server, you need the following files:
 - `cantotype.js` - the main program module
 - `cantotype_load.js` - the data loading module
 - `cantotype_config.js` - the generated configuration script
+- `cantotype_style.css` - the CSS stylesheet
 - `pako_inflate.js` - the Pako GZip decompressor
 
 All of these files must have the exact same names listed above (case sensitive), except that the main `cantotype.html` page can be renamed anything you want, including using it as the index page for the server directory.
@@ -91,6 +89,7 @@ You may want to verify that the HTTP server understands the file extensions of a
 
      Extension |    MIME type
     ===========+==================
+       .css    | text/css
        .gz     | application/gzip
        .html   | text/html
        .js     | text/javascript
