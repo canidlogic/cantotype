@@ -458,6 +458,52 @@
   }
   
   /*
+   * Decompress and return a plain-text data file that has been loaded
+   * by this module.
+   * 
+   * You must use initDB() first and have that return through the
+   * f_ready callback before this function can be used.
+   * 
+   * Parameters:
+   * 
+   *   fname : string - the name of the file to load
+   * 
+   * Return:
+   * 
+   *   the plain-text data file contents as a string
+   */
+  function textData(fname) {
+    
+    var func_name = "textData";
+    var tx;
+    
+    // Check state
+    if (!m_loaded) {
+      fault(func_name, 50);
+    }
+    
+    // Check parameter
+    if (typeof(fname) !== "string") {
+      fault(func_name, 100);
+    }
+    
+    // Check that we have the data file
+    if (!(fname in m_files)) {
+      throw("Can't find requested data file '" + fname + "'");
+    }
+    
+    // Try to decompress
+    try {
+      tx = pako.inflate(m_files[fname], {"to": "string"});
+    } catch (ex) {
+      throw("Can't load text from data file '" + fname + "'");
+    }
+    
+    // Return plain text
+    return tx;
+  }
+  
+  /*
    * Asynchronously load all database files from HTTP and the IndexedDB
    * cache, and update the IndexedDB cache if possible.
    * 
@@ -585,6 +631,7 @@
    */
   window.ctt_load = {
     "jsonData": jsonData,
+    "textData": textData,
     "initDB": initDB
   };
 
