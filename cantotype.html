@@ -1206,7 +1206,7 @@ var canto_words = [];
           function() {
           
             // Load character database
-            canto_chars = ctt_load.jsonData("cantotype_chardb.gz");
+            canto_chars = ctt_load.jsonData(canto_config.chardb_name);
           
             // Update status
             if (eSplash != null) {
@@ -1218,7 +1218,8 @@ var canto_words = [];
               function() {
                 
                 // Load word database
-                canto_words = ctt_load.jsonData("cantotype_worddb.gz");
+                canto_words = ctt_load.jsonData(
+                  canto_config.worddb_name);
                 
                 // Update status
                 if (eSplash != null) {
