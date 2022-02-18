@@ -22,6 +22,9 @@ The following is an annotated example of a configuration file:
       // The name of the word database file
       worddb_name: "cantotype_worddb.gz"
 
+      // The name of the style sheet template
+      csst_name: "cantotype_css.gz"
+
     };
 
 All of the file name properties are in the path established by `data_base`.  The `data_base` variable should end in a slash if it is the name of a folder.  It could also be a path to a CGI script, in which case it might be something like `/cgi-bin/resource.pl?name=`
