@@ -8,48 +8,8 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"/>
     
-    <!-- Main style sheet -->
+    <!-- Splash screen style sheet -->
     <style>
-
-@font-face {
-  font-family: 'FreeHK';
-  font-style: normal;
-  font-weight: normal;
-  src: url('freehk.woff');
-}
-
-@font-face {
-  font-family: 'NotoSansHK';
-  font-style: normal;
-  font-weight: normal;
-  src: url('notosanshk.woff');
-}
-
-@font-face {
-  font-family: 'LastResort';
-  font-style: normal;
-  font-weight: normal;
-  src: url('lastresort.woff');
-}
-
-body {
-  padding-left: 0.25em;
-  padding-right: 0.25em;
-  margin-bottom: 3.5em;
-  background-color: WhiteSmoke;
-  color: black;
-  font-family: sans-serif;
-}
-
-:link {
-  text-decoration: none;
-  color: blue
-}
-
-:visited {
-  text-decoration: none;
-  color: blue
-}
 
 #divSplash {
   font-style: italic;
@@ -57,125 +17,6 @@ body {
 
 #divMain {
   display: none;
-}
-
-#tblCtl td {
-  padding-left: 0.25em;
-  padding-right: 0.25em;
-  padding-top: 0.25em;
-  padding-bottom: 0.25em;
-}
-
-#txtInput {
-  font-family: monospace;
-  max-width: 10em;
-}
-
-.clsNotes {
-  background-color: white;
-  max-width: 35em;
-  padding: 0.5em;
-  border: thin solid;
-  margin-top: 1em;
-  margin-bottom: 1em;
-}
-
-#tblApos {
-  border-collapse: collapse;
-}
-
-#tblApos th {
-  padding-top: 0.25em;
-  padding-bottom: 0.25em;
-  padding-left: 1em;
-  padding-right: 1em;
-  border: thin solid;
-  text-align: center;
-  font-weight: bold;
-}
-
-#tblApos td {
-  padding-top: 0.25em;
-  padding-bottom: 0.25em;
-  padding-left: 1em;
-  padding-right: 1em;
-  border: thin solid;
-}
-
-.tdAposCode {
-  text-align: center;
-  font-family: monospace;
-}
-
-.tdAposResult {
-  text-align: center;
-}
-
-.tdAposMeaning {
-  text-align: left;
-}
-
-.rtable td {
-  padding-left: 0.25em;
-  padding-right: 0.25em;
-}
-
-.han {
-  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
-  font-size: 400%;
-}
-
-.hanquote {
-  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
-}
-
-.cpt {
-  font-family: monospace;
-  font-size: 150%;
-}
-
-.cpr {
-  font-weight: bold;
-}
-
-.cpd {
-  font-style: italic;
-}
-
-.tt {
-  font-family: monospace;
-}
-
-#txtWrite {
-  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
-  font-size: 150%;
-}
-
-#txtCode {
-  font-family: monospace;
-  font-size: 120%;
-}
-
-.clsLine {
-  margin-top: 1em;
-  margin-bottom: 1em;
-}
-
-#divErrLine {
-  display: none;
-  margin-top: 1em;
-  margin-bottom: 1em;
-  font-weight: bold;
-  color: red;
-}
-
-.dicthw {
-  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
-  font-size: 120%;
-}
-
-.dictdef {
-  font-family: 'NotoSansHK', 'LastResort', sans-serif;
 }
 
     </style>
@@ -1145,51 +986,87 @@ var canto_words = [];
     ctt_load.initDB(
       function() {
         // Callback invoked when database initialization is successful
-        var e, eTypeBox, eErrLine;
-        var f;
+        var e, eTypeBox, eErrLine, eCSS;
+        var f, csst;
     
         // Define function that we will call once all database loading
         // and index building is done
         f = function() {
-          // Add an event handler to the typing box that updates the
-          // position for insertion whenever focus is lost from the
-          // element
-          eTypeBox = document.getElementById("txtWrite");
-          if (eTypeBox == null) {
-            fault(func_name, 700);
-          }
-          eTypeBox.onblur = function(ev) {
-            m_caret = eTypeBox.selectionStart;
-          };
+          // Get the CSS stylesheet as plain text
+          csst = ctt_load.textData(canto_config.csst_name);
           
-          // Add an event handler to the codepoint box that immediately
-          // hides the error DIV for codepoints if there is any input
-          e = document.getElementById("txtCode");
-          if (e == null) {
-            fault(func_name, 800);
-          }
+          // Convert the CSS stylesheet into a blob of type text/css
+          csst = new Blob([csst], {"type": "text/css"});
           
-          eErrLine = document.getElementById("divErrLine");
-          if (eErrLine == null) {
-            fault(func_name, 810);
-          }
+          // Convert the CSS stylesheet blob into a string storing an
+          // object URL that references the blob
+          csst = URL.createObjectURL(csst);
           
-          e.oninput = function(ev) {
-            eErrLine.style.display = "none";
-          };
+          // Now create a <link> element that will link to this CSS URL
+          eCSS = document.createElement("link");
+          eCSS.setAttribute("href", csst);
+          eCSS.setAttribute("rel", "stylesheet");
           
-          // Hide the splash-screen DIV and show the main DIV
-          e = document.getElementById("divSplash");
-          if (e == null) {
-            fault(func_name, 900);
+          // Find the first <style> element in this page
+          e = document.getElementsByTagName("style");
+          if (e.length < 1) {
+            fault(func_name, 600);
           }
-          e.style.display = "none";
+          e = e[0];
           
-          e = document.getElementById("divMain");
-          if (e == null) {
-            fault(func_name, 910);
-          }
-          e.style.display = "block";
+          // Insert the <link> element before this first <style>
+          e.parentNode.insertBefore(eCSS, e);
+          
+          // Wait for the event loop so that the CSS update can take
+          // effect
+          setTimeout(
+            function() {
+              
+              // Add an event handler to the typing box that updates the
+            // position for insertion whenever focus is lost from the
+            // element
+            eTypeBox = document.getElementById("txtWrite");
+            if (eTypeBox == null) {
+              fault(func_name, 700);
+            }
+            eTypeBox.onblur = function(ev) {
+              m_caret = eTypeBox.selectionStart;
+            };
+            
+            // Add an event handler to the codepoint box that
+            // immediately hides the error DIV for codepoints if there
+            // is any input
+            e = document.getElementById("txtCode");
+            if (e == null) {
+              fault(func_name, 800);
+            }
+            
+            eErrLine = document.getElementById("divErrLine");
+            if (eErrLine == null) {
+              fault(func_name, 810);
+            }
+            
+            e.oninput = function(ev) {
+              eErrLine.style.display = "none";
+            };
+            
+            // Hide the splash-screen DIV and show the main DIV
+            e = document.getElementById("divSplash");
+            if (e == null) {
+              fault(func_name, 900);
+            }
+            e.style.display = "none";
+            
+            e = document.getElementById("divMain");
+            if (e == null) {
+              fault(func_name, 910);
+            }
+            e.style.display = "block";
+              
+            },
+            0
+          );
+          
         };
     
         // Update status
