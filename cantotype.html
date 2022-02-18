@@ -8,6 +8,26 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"/>
     
+    <!-- Define CSS webfonts that will be dynamically added -->
+    <script>
+
+/*
+ * Array storing dynamic CSS font configuration.
+ *
+ * Each element of this array is a subarray storing the name of the CSS
+ * font that will be declared, and the name of the WOFF font file.
+ *
+ * The WOFF font files are assumed to be part of the data files that are
+ * dynamically loaded.
+ */
+var font_config = [
+  ['FreeHK', 'freehk.woff'],
+  ['NotoSansHK', 'notosanshk.woff'],
+  ['LastResort', 'lastresort.woff']
+];
+
+    </script>
+    
     <!-- Splash screen style sheet -->
     <style>
 
@@ -20,6 +40,9 @@
 }
 
     </style>
+    
+    <!-- Load the main style sheet -->
+    <link href="cantotype_style.css" rel="stylesheet"/>
     
     <!-- If JavaScript disabled, do not show the splash screen -->
     <noscript>
@@ -992,35 +1015,20 @@ var canto_words = [];
         // Define function that we will call once all database loading
         // and index building is done
         f = function() {
-          // Get the CSS stylesheet template as plain text
-          csst = ctt_load.textData(canto_config.csst_name);
-          
-          // If there is at least one grave accent character in the CSS
-          // file, we need to do template processing
-          if (csst.indexOf("`") >= 0) {
-            // CSS template processing -- split CSS template at grave
-            // accent characters
-            csst = csst.split("`");
-            
-            // Make sure there are an odd number of elements in the
-            // array, indicating that all grave accent marks are in
-            // pairs
-            if ((csst.length % 2) !== 1) {
-              fault(func_name, 500);
-            }
-            
-            // Going by zero-based indices, all odd-numbered indices are
-            // the names of font file resources, so replace those with
-            // data URLs to loaded WOFF blobs
-            for(i = 1; i < csst.length; i = i + 2) {
-              csst[i] = ctt_load.woffURL(csst[i]);
-            }
-            
-            // Rejoin the CSS string elements to form the completed CSS
-            csst = csst.join("");
+          // Build the CSS for linking the webfonts, and set the webfont
+          // URLs to data URLs into our data files
+          csst = "";
+          for(i = 0; i < font_config.length; i++) {
+            csst = csst + "@font-face { ";
+            csst = csst + "font-family: '" + font_config[i][0] + "'; ";
+            csst = csst + "font-style: normal; ";
+            csst = csst + "font-weight: normal; ";
+            csst = csst + "src: url('" +
+                          ctt_load.woffURL(font_config[i][1]) + "'); ";
+            csst = csst + "}\n";
           }
           
-          // Convert the CSS stylesheet into a blob of type text/css
+          // Convert the dynamic CSS into a blob of type text/css
           csst = new Blob([csst], {"type": "text/css"});
           
           // Convert the CSS stylesheet blob into a string storing an
