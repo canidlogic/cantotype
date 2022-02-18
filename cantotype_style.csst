@@ -2,21 +2,21 @@
   font-family: 'FreeHK';
   font-style: normal;
   font-weight: normal;
-  src: url('freehk.woff');
+  src: url('`freehk.woff`');
 }
 
 @font-face {
   font-family: 'NotoSansHK';
   font-style: normal;
   font-weight: normal;
-  src: url('notosanshk.woff');
+  src: url('`notosanshk.woff`');
 }
 
 @font-face {
   font-family: 'LastResort';
   font-style: normal;
   font-weight: normal;
-  src: url('lastresort.woff');
+  src: url('`lastresort.woff`');
 }
 
 body {
