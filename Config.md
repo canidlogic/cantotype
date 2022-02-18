@@ -14,13 +14,13 @@ The following is an annotated example of a configuration file:
       data_base: "/url/to/data/",
 
       // The name of the data file index
-      index_name = "cantotype_data_index.gz",
+      index_name: "cantotype_data_index.gz",
 
       // The name of the character database file
-      chardb_name = "cantotype_chardb.gz",
+      chardb_name: "cantotype_chardb.gz",
 
       // The name of the word database file
-      worddb_name = "cantotype_worddb.gz"
+      worddb_name: "cantotype_worddb.gz"
 
     };
 
