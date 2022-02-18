@@ -987,13 +987,38 @@ var canto_words = [];
       function() {
         // Callback invoked when database initialization is successful
         var e, eTypeBox, eErrLine, eCSS;
-        var f, csst;
+        var f, csst, i;
     
         // Define function that we will call once all database loading
         // and index building is done
         f = function() {
-          // Get the CSS stylesheet as plain text
+          // Get the CSS stylesheet template as plain text
           csst = ctt_load.textData(canto_config.csst_name);
+          
+          // If there is at least one grave accent character in the CSS
+          // file, we need to do template processing
+          if (csst.indexOf("`") >= 0) {
+            // CSS template processing -- split CSS template at grave
+            // accent characters
+            csst = csst.split("`");
+            
+            // Make sure there are an odd number of elements in the
+            // array, indicating that all grave accent marks are in
+            // pairs
+            if ((csst.length % 2) !== 1) {
+              fault(func_name, 500);
+            }
+            
+            // Going by zero-based indices, all odd-numbered indices are
+            // the names of font file resources, so replace those with
+            // data URLs to loaded WOFF blobs
+            for(i = 1; i < csst.length; i = i + 2) {
+              csst[i] = ctt_load.woffURL(csst[i]);
+            }
+            
+            // Rejoin the CSS string elements to form the completed CSS
+            csst = csst.join("");
+          }
           
           // Convert the CSS stylesheet into a blob of type text/css
           csst = new Blob([csst], {"type": "text/css"});
