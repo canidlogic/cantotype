@@ -269,6 +269,9 @@
    * Since the cache is not required for program operation, the main
    * Cantotype program does not need to wait for the update to complete.
    * 
+   * This function will also take care of closing the database
+   * connection.
+   * 
    * Parameters:
    * 
    *   db : the database connection
@@ -278,7 +281,226 @@
    *   raw_index : the raw array buffer of the compressed data index
    */
   function syncCache(db, jsi, raw_index) {
-    // @@TODO:
+    
+    var func_name = "syncCache";
+    var tr, r, f, f2, f_full, f_upd, str, jsx, upl, rml, ka, i;
+    
+    // Perform the whole synchronization in a single transaction
+    tr = db.transaction(["fstore"], "readwrite");
+    
+    // On any kind of return from the transaction, we will close the
+    // database handle; on error returns, a warning is written to the
+    // console but it is otherwise ignored
+    tr.onerror = function(ev) {
+      console.log("Warning: IndexedDB sync failed on error!");
+      db.close();
+    };
+    tr.onabort = function(ev) {
+      console.log("Warning: IndexedDB sync aborted!");
+      db.close();
+    };
+    tr.onsuccess = function(ev) {
+      db.close();
+    }
+    
+    // Define a callback that will be invoked if we need to reload the
+    // whole cache
+    f_full = function() {
+      // Begin by clearing all records out of the cache
+      r = tr.objectStore("fstore").clear();
+      r.onsuccess = function(eva) {
+        
+        // Cache is now empty; add everything including the raw_index
+        // itself
+        ka = Object.keys(jsi);
+        i = -1;
+        f = function() {
+          
+          // If i has special value of -1, add the index, increment i
+          // and loop again
+          if (i < 0) {
+            r = tr.objectStore("fstore").add(raw_index, "index");
+            r.onsuccess = function(evb) {
+              i++;
+              f();
+            };
+            return;
+          }
+          
+          // If we have added everything, let the transaction complete
+          if (i >= ka.length) {
+            return;
+          }
+          
+          // Add the current data file, increment i and loop again
+          r = tr.objectStore("fstore").add(jsi[ka[i]][2], ka[i]);
+          r.onsuccess = function(evb) {
+            i++;
+            f();
+          };
+        };
+        f();
+      };
+    };
+    
+    // Define a callback that will be invoked if we need to update at
+    // least part of the cache
+    f_upd = function() {
+      
+      // Add or overwrite all keys on the update list, as well as the
+      // data index
+      i = -1;
+      f = function() {
+        
+        // If i has special value of -1, update the index, increment i
+        // and loop again
+        if (i < 0) {
+          r = tr.objectStore("fstore").put(raw_index, "index");
+          r.onsuccess = function(evb) {
+            i++;
+            f();
+          };
+          return;
+        }
+        
+        // If we have added everything, next step is to get all the
+        // keys in the IndexedDB store
+        if (i >= upl.length) {
+          r = tr.objectStore("fstore").getAllKeys();
+          r.onsuccess = function(evb) {
+            
+            // If we got the key list, then redo the removal list using
+            // the actual keys from the store (in case the store has
+            // extra elements not in its old index); else, leave the
+            // removal list as-is
+            if (r.result) {
+              rml = [];
+              for(i = 0; i < r.result.length; i++) {
+                // Don't put the "index" on the removal list
+                if (r.result[i] === "index") {
+                  continue;
+                }
+                
+                // Otherwise, put on removal list if not in the HTTP
+                // index
+                if (!(r.result[i] in jsi)) {
+                  rml.push(r.result[i]);
+                }
+              }
+            }
+            
+            // Finally, delete anything on the removal list
+            i = 0;
+            f2 = function() {
+              
+              // If we have removed everything on the removal list, let
+              // the transaction finish
+              if (i >= rml.length) {
+                return;
+              }
+              
+              // Remove current item, increment i and loop
+              r = tr.objectStore("fstore").delete(rml[i]);
+              r.onsuccess = function(evc) {
+                i++;
+                f2();
+              };
+            };
+            f2();
+            
+          };
+          return;
+        }
+        
+        // Add or overwrite the current update key, increment i and loop
+        // again
+        r = tr.objectStore("fstore").put(jsi[upl[i]][2], upl[i]);
+        r.onsuccess = function(evb) {
+          i++;
+          f();
+        };
+      };
+      f();
+    };
+    
+    // First thing we do is try to read the index
+    r = tr.objectStore("fstore").get("index");
+    r.onsuccess = function(eva) {
+    
+      // If we couldn't read the index from IndexedDB, do a full reload
+      if (!(r.result)) {
+        f_full();
+        return;
+      }
+      
+      // Attempt to decompress, parse, and verify the index; if this
+      // fails, do a full reload
+      try {
+        str = pako.inflate(r.result, {"to": "string"});
+      } catch (err) {
+        // Decompression failed
+        console.log("Warning: Failed to decompress IndexedDB index!");
+        f_full();
+        return;
+      }
+  
+      try {
+        jsx = JSON.parse(str);
+      } catch (err) {
+        // JSON parsing failed
+        console.log("Warning: Failed to parse IndexedDB index!");
+        f_full();
+        return;
+      }
+      
+      if (!verifyIndex(jsx)) {
+        console.log("Warning: IndexedDB index didn't verify!");
+        f_full();
+        return;
+      }
+      
+      // We got the index from the IndexedDB cache, so now compare it to
+      // the HTTP index and construct an update list and a removal list
+      upl = [];
+      rml = [];
+      
+      ka = Object.keys(jsi);
+      
+      for(i = 0; i < ka.length; i++) {
+        // We are going through the HTTP index here -- check whether
+        // current key is in the IndexedDB index; if it is not, add it
+        // to the update list and continue
+        if (!(ka[i] in jsx)) {
+          upl.push(ka[i]);
+          continue;
+        }
+        
+        // If we got here, the key is in both the HTTP index and the
+        // IndexedDB index; add it to the update list if the IndexedDB
+        // revision is older than the HTTP revision
+        if (jsx[ka[i]][0] < jsi[ka[i]][0]) {
+          upl.push(ka[i]);
+        }
+      }
+      
+      ka = Object.keys(jsx);
+      
+      for(i = 0; i < ka.length; i++) {
+        // We are going through the IndexedDB index here -- check
+        // whether current key is in the HTTP index; if it is not, add
+        // it to the removal list and continue
+        if (!(ka[i] in jsi)) {
+          rml.push(ka[i]);
+        }
+      }
+      
+      // If both lists are empty, just let this transaction complete
+      // since the cache is already synchronized; otherwise, do an
+      // update operation
+      if ((upl.length > 0) || (rml.length > 0)) {
+        f_upd();
+      }
+    };
   }
   
   /*
@@ -419,6 +641,7 @@
         if (i >= ka.length) {
           done_called = true;
           f_done();
+          return;
         }
         
         // If we get here, then we have an entry we want to load from
