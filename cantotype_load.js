@@ -203,8 +203,60 @@
    *   couldn't connect to IndexedDB
    */
   function connectIXDB(f_db, f_nodb) {
-    // @@TODO:
-    f_nodb();
+    
+    var func_name = "connectIXDB";
+    var odr, db, i, osn;
+    
+    // Check parameters
+    if ((typeof(f_db) !== "function") ||
+        (typeof(f_nodb) !== "function")) {
+      fault(func_name, 100);
+    }
+    
+    // Attempt to open a connection
+    try {
+      odr = window.indexedDB.open("CantotypeCache", 1);
+      
+      // If there is an error opening the database or the database is
+      // blocked because another version of the database is in use, then
+      // proceed with the callback for no database connection
+      odr.onerror = function(ev) {
+        f_nodb();
+      };
+      odr.onblocked = function(ev) {
+        f_nodb();
+      };
+      
+      // If there is no current database or an older version, we need to
+      // clear the database and update its structure
+      odr.onupgradeneeded = function(ev) {
+        // Get the database handle for restructuring
+        db = ev.target.result;
+        
+        // Delete any existing object stores
+        osn = [];
+        for(i = 0; i < db.objectStoreNames.length; i++) {
+          osn.push(db.objectStoreNames[i]);
+        }
+        for(i = 0; i < osn.length; i++) {
+          db.deleteObjectStore(osn[i]);
+        }
+        
+        // Create the fstore object store, which has out-of-line keys
+        // and no auto-increment
+        db.createObjectStore("fstore");
+      };
+      
+      // If we get this callback, we have connected to the database with
+      // the proper version
+      odr.onsuccess = function(ev) {
+        f_db(odr.result);
+      };
+      
+    } catch (exa) {
+      // Couldn't open a connection
+      f_nodb();
+    }
   }
   
   /*
@@ -248,6 +300,8 @@
    * 
    * Parameters:
    *
+   *   db : the handle to the IndexedDB cache database
+   * 
    *   jsi : the parsed data file index
    *  
    *   f_done : function called when pass is complete
@@ -258,8 +312,133 @@
    *   f_err : function called to report error with a reason parameter
    */
   function dataPassOne(db, jsi, f_done, f_status, f_err) {
-    // @@TODO:
-    f_done();
+    
+    var func_name = "dataPassOne";
+    var tr, r, done_called, str, jsx, ka, i, f, raw_data;
+    
+    // Check all but the db and jsi parameters
+    if ((typeof(f_done) !== "function") ||
+        (typeof(f_status) !== "function") ||
+        (typeof(f_err) !== "function")) {
+      fault(func_name, 100);
+    }
+    
+    // We need to make sure we only call f_done() once, so set the flag
+    // to false to begin with
+    done_called = false;
+    
+    // Begin a read transaction for the pass
+    tr = db.transaction(["fstore"], "readonly");
+    
+    // If there is a problem with the transaction, we will just call
+    // done and get the files over HTTP instead
+    tr.onabort = function(ev) {    
+      if (!done_called) {
+        done_called = true;
+        f_done();
+      }
+    };
+    
+    tr.onerror = function(ev) {
+      if (!done_called) {
+        done_called = true;
+        f_done();
+      }
+    };
+    
+    // If there transaction succeeds, we call done
+    tr.onsuccess = function(ev) {
+      if (!done_called) {
+        done_called = true;
+        f_done();
+      }
+    };
+    
+    // Read the index file from the IndexedDB database
+    r = tr.objectStore("fstore").get("index");
+    r.onsuccess = function(eva) {
+
+      // If we didn't get a result for the index, end the transaction
+      if (!(r.result)) {
+        tr.abort();
+        return;
+      }
+      
+      // Decompress the index to a string
+      try {
+        str = pako.inflate(r.result, {"to": "string"});
+      } catch (err) {
+        // Decompression failed
+        tr.abort();
+        return;
+      }
+  
+      // Parse the string as JSON
+      try {
+        jsx = JSON.parse(str);
+      } catch (err) {
+        // JSON parsing failed
+        tr.abort();
+        return;
+      }
+      
+      // Verify index is valid
+      if (!verifyIndex(jsx)) {
+        tr.abort();
+        return;
+      }
+      
+      // Get all keys from the HTTP data file index
+      ka = Object.keys(jsi);
+      
+      // We will process each of those keys within a callback function
+      i = 0;
+      f = function() {
+        
+        // While i is in range, skip any keys that we can't load from
+        // the cache
+        while (i < ka.length) {
+          // If this key isn't in the cache index, skip it
+          if (!(ka[i] in jsx)) {
+            i++;
+            continue;
+          }
+          
+          // If the cache version is older than the HTTP version, skip
+          // it
+          if (jsx[ka[i]][0] < jsi[ka[i]][0]) {
+            i++;
+            continue;
+          }
+          
+          // If we got here, then we can load current key from cache
+          break;
+        }
+        
+        // If we have processed all the keys, we are done
+        if (i >= ka.length) {
+          done_called = true;
+          f_done();
+        }
+        
+        // If we get here, then we have an entry we want to load from
+        // the cache
+        r = tr.objectStore("fstore").get(ka[i]);
+        r.onsuccess = function(evb) {
+          
+          // If we got our result, add it to jsi
+          if (r.result) {
+            jsi[ka[i]].push(r.result);
+          }
+          
+          // Increment i and process next key
+          i++;
+          f();
+        };
+        
+      };
+      f();
+    };
   }
   
   /*
@@ -416,6 +595,32 @@
   }
   
   /*
+   * Attempt to load all data files from the cache without using HTTP.
+   * 
+   * While loading is in progress, the f_status callback may be called
+   * with a string containing a progress report that can be shown to the
+   * user to indicate how far along the loading process is.
+   * 
+   * If loading finishes successfully, f_ready will be called with no
+   * parameters.  If there is any failure, f_err will be called with a
+   * reason parameter.
+   * 
+   * Parameters:
+   * 
+   *   f_ready : function called when load is complete
+   * 
+   *   f_status : function called to report loading progress with a
+   *   string parameter holding the current loading status
+   * 
+   *   f_err : function called to report loading error with a reason
+   *   parameter
+   */
+  function cacheLoad(f_ready, f_status, f_err) {
+    // @@TODO:
+    f_err("TODO: cacheLoad");
+  }
+  
+  /*
    * Public functions
    * ================
    */
@@ -557,6 +762,13 @@
       fault(func_name, 100);
     }
     
+    // If browser indicates it is in offline mode, then perform a cache
+    // load
+    if (navigator.onLine === false) {
+      cacheLoad(f_ready, f_status, f_err);
+      return;
+    }
+    
     // First we need to get and parse the data index file from HTTP
     loadGZJSON(canto_config.data_base + canto_config.index_name,
       function(js_index, raw_index) {
@@ -643,8 +855,9 @@
         
       },
       function(reason) {
-        // Failed to load data index over HTTP
-        f_err("Failed to load data index file: " + reason);
+        // Failed to load data index over HTTP, so assume we are offline
+        // and perform a cache load
+        cacheLoad(f_ready, f_status, f_err);
       }
     );
   }
