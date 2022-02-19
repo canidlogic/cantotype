@@ -174,6 +174,9 @@
    * Verify that the parsed representation of a data file index is
    * valid.
    * 
+   * Do not use this on parsed representations that have any raw data
+   * added into them, or they will not validate.
+   * 
    * Parameters:
    * 
    *   js - the parsed representation to verify
@@ -183,7 +186,55 @@
    *   true if valid, false if not
    */
   function verifyIndex(js) {
-    // @@TODO:
+    
+    var k, ar;
+    
+    // Check type
+    if (typeof(js) !== "object") {
+      return false;
+    }
+    if (js instanceof Array) {
+      return false;
+    }
+    
+    // Check each entry
+    for(k in js) {
+      // Get the array
+      ar = js[k];
+      
+      // Entry must be an array
+      if (!(ar instanceof Array)) {
+        return false;
+      }
+      
+      // Each array must be length two
+      if (ar.length !== 2) {
+        return false;
+      }
+      
+      // First element must be string and second must be finite number
+      // that is integer zero or greater
+      if ((typeof(ar[0]) !== "string") ||
+            (typeof(ar[1]) !== "number")) {
+        return false;
+      }
+      if (!isFinite(ar[1])) {
+        return false;
+      }
+      if (ar[1] !== Math.floor(ar[1])) {
+        return false;
+      }
+      if (!(ar[1] >= 0)) {
+        return false;
+      }
+      
+      // Check string format of first element
+      if (!((/^[0-9]{4}-[0-9]{2}-[0-9]{2}\:[0-9]{3}$/).test(ar[0]))) {
+        return false;
+      }
+    }
+    
+    // If we got here, the index is valid
     return true;
   }
   
@@ -839,8 +890,119 @@
    *   parameter
    */
   function cacheLoad(f_ready, f_status, f_err) {
-    // @@TODO:
-    f_err("TODO: cacheLoad");
+    
+    var func_name = "cacheLoad";
+    var tr, r, str, jsx, i, f, ka, k;
+    
+    // Check parameters
+    if ((typeof(f_ready) !== "function") ||
+        (typeof(f_status) !== "function") ||
+        (typeof(f_err) !== "function")) {
+      fault(func_name, 100);
+    }
+    
+    // Connect to the IndexedDB cache
+    connectIXDB(
+      function(db) {
+        // We are connected, so now try to load everything from a single
+        // read transaction
+        tr = db.transaction(["fstore"], "readonly");
+        
+        // On error or abort, report that loading failed
+        tr.onerror = function(ev) {
+          f_err("Offline and failed to load from cache");
+        };
+        tr.onabort = function(ev) {
+          f_err("Offline and failed to load from cache");
+        }
+        
+        // First, load the index
+        r = tr.objectStore("fstore").get("index");
+        r.onsuccess = function(ev) {
+          
+          // Abort the transaction if no index in the cache
+          if (!(r.result)) {
+            tr.abort();
+            return;
+          }
+          
+          // Decompress, parse, and verify the index
+          try {
+            str = pako.inflate(r.result, {"to": "string"});
+          } catch (err) {
+            // Decompression failed
+            f_err("Offline and failed to load from cache");
+            return;
+          }
+      
+          try {
+            jsx = JSON.parse(str);
+          } catch (err) {
+            // JSON parsing failed
+            f_err("Offline and failed to load from cache");
+            return;
+          }
+          
+          if (!verifyIndex(jsx)) {
+            f_err("Offline and failed to load from cache");
+            return;
+          }
+          
+          // Get all of the data file keys
+          ka = Object.keys(jsx);
+          
+          // Load all of the raw data from the cache
+          i = 0;
+          f = function() {
+            
+            // If we have loaded everything, then update module state
+            // and invoke done handler
+            if (i >= ka.length) {
+              m_files = {};
+              for(k in jsx) {
+                m_files[k] = jsx[k][2];
+              }
+              
+              // Start the WOFF map at empty
+              m_woffs = {};
+              
+              // Set loaded flag
+              m_loaded = true;
+              
+              // Invoke ready callback
+              f_ready();
+              return;
+            }
+            
+            // Load the current file into memory
+            r = tr.objectStore("fstore").get(ka[i]);
+            r.onsuccess = function(evb) {
+            
+              // Fail if we didn't find the key
+              if (!(r.result)) {
+                f_err("Offline and failed to load from cache");
+                return;
+              }
+            
+              // Add the data to the structure
+              jsx[ka[i]].push(r.result);
+            
+              // Increment i and loop back
+              i++;
+              f();
+            };
+            
+          };
+          f();
+        
+        };
+        
+      },
+      function() {
+        // Couldn't connect to cache, so loading fails
+        f_err("Offline and failed to load from cache");
+      }
+    );
   }
   
   /*
