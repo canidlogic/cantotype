@@ -10,6 +10,9 @@ The following is an annotated example of a configuration file:
 
     var canto_config = {
 
+      // The URL prefix for program files
+      code_base: "/url/to/code/",
+
       // The URL prefix for data files
       data_base: "/url/to/data/",
 
@@ -23,5 +26,7 @@ The following is an annotated example of a configuration file:
       worddb_name: "cantotype_worddb.gz"
 
     };
+
+The `code_base` property is where all the program files for Cantotype reside on the server.  This variable should end in a slash if it is the name of a folder.
 
 All of the file name properties are in the path established by `data_base`.  The `data_base` variable should end in a slash if it is the name of a folder.  It could also be a path to a CGI script, in which case it might be something like `/cgi-bin/resource.pl?name=`
