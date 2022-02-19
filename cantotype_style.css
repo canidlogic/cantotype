@@ -1,0 +1,137 @@
+body {
+  padding-left: 0.25em;
+  padding-right: 0.25em;
+  margin-bottom: 3.5em;
+  background-color: WhiteSmoke;
+  color: black;
+  font-family: sans-serif;
+}
+
+:link {
+  text-decoration: none;
+  color: blue
+}
+
+:visited {
+  text-decoration: none;
+  color: blue
+}
+
+#tblCtl td {
+  padding-left: 0.25em;
+  padding-right: 0.25em;
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+}
+
+#txtInput {
+  font-family: monospace;
+  max-width: 10em;
+}
+
+.clsNotes {
+  background-color: white;
+  max-width: 35em;
+  padding: 0.5em;
+  border: thin solid;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+#tblApos {
+  border-collapse: collapse;
+}
+
+#tblApos th {
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+  padding-left: 1em;
+  padding-right: 1em;
+  border: thin solid;
+  text-align: center;
+  font-weight: bold;
+}
+
+#tblApos td {
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+  padding-left: 1em;
+  padding-right: 1em;
+  border: thin solid;
+}
+
+.tdAposCode {
+  text-align: center;
+  font-family: monospace;
+}
+
+.tdAposResult {
+  text-align: center;
+}
+
+.tdAposMeaning {
+  text-align: left;
+}
+
+.rtable td {
+  padding-left: 0.25em;
+  padding-right: 0.25em;
+}
+
+.han {
+  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
+  font-size: 400%;
+}
+
+.hanquote {
+  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
+}
+
+.cpt {
+  font-family: monospace;
+  font-size: 150%;
+}
+
+.cpr {
+  font-weight: bold;
+}
+
+.cpd {
+  font-style: italic;
+}
+
+.tt {
+  font-family: monospace;
+}
+
+#txtWrite {
+  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
+  font-size: 150%;
+}
+
+#txtCode {
+  font-family: monospace;
+  font-size: 120%;
+}
+
+.clsLine {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+#divErrLine {
+  display: none;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  font-weight: bold;
+  color: red;
+}
+
+.dicthw {
+  font-family: 'FreeHK', 'NotoSansHK', 'LastResort', sans-serif;
+  font-size: 120%;
+}
+
+.dictdef {
+  font-family: 'NotoSansHK', 'LastResort', sans-serif;
+}
