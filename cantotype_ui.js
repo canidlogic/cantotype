@@ -169,7 +169,7 @@
   function typeChar(c) {
     
     var func_name = "typeChar";
-    var e, si, str;
+    var e, si, str, prefix, suffix;
     
     // Check parameter
     if (typeof(c) !== "number") {
@@ -1131,8 +1131,15 @@
 
 }());
 
+
 // Since we loaded this script module with defer, this doesn't run until
-// after the page has loaded the DOM, so we can call directly into the
-// handleLoad function here
+// after the page has loaded the DOM, so we can start directly here by
+// calling the service worker if supported for offline support, and then
+// calling the loading procedure
 //
+if('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(
+    canto_config.code_base + 'cantotype_sw.js');
+};
+
 ctt_html.handleLoad();
