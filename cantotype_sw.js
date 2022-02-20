@@ -23,7 +23,7 @@
                        * * * * * * * * * * * * */
 
 // Cache name that is unique to this specific program file collection
-var cache_name = "Cantotype-2022-02-19-002";
+var cache_name = "Cantotype-2022-02-19-005";
 
 // Local copy of code_base from the configuration script
 var code_base = "/url/to/code/";
@@ -38,6 +38,7 @@ var html_name = "cantotype.html";
 // and do NOT include any of the data files
 var program_files = [
   html_name,
+  "cantotype.webmanifest",
   "cantotype_style.css",
   "cantotype.js",
   "cantotype_config.js",
