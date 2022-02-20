@@ -60,6 +60,10 @@ Do __not__ compress this configuration file with `gzip` and do __not__ place it 
 
 Instead, you must name this file `cantotype_config.js` and place it in the same directory as the main Cantotype HTML page.
 
+## Configuring additional files
+
+You must also configure the `cantotype.webmanifest` and the `cantotype_ws.js` files.  See `Config.md` for further information about how to do this.
+
 ## Fetching the libraries
 
 In order to speed up download of the rather large data files, the data files are compressed with GZip and decompressed client-side.  The [Pako](https://github.com/nodeca/pako) library is used to decompress these GZipped files on the client side.  From the `dist` directory of the Pako project, you will need the `pako_inflate.js` script and place this in the same directory as the main Cantotype HTML page.  You can also use `pako_inflate.min.js` provided that you rename it to `pako_inflate.js`.
@@ -70,34 +74,54 @@ Although Cantotype is completely client-side and does not use any server-side sc
 
 You can either place Cantotype on an Internet server, or you can use the simple [Jacques](https://github.com/canidlogic/jacques) HTTP server script to serve Cantotype locally over HTTP.  Jacques has been used during the development of Cantotype, so it is officially supported and should work without issue.
 
+Note, however, that installing Cantotype as an app and using it in offline mode with the service worker will probably require loading it over HTTPS.  Service worker technology requires HTTPS for security reasons.  The app will still work as a normal website when served over HTTP, though, and data caching should still work.
+
 ## Assembling the files
 
 All in the same directory on the HTTP server, you need the following files:
 
 - `cantotype.html` - the main webapp HTML page
+- `cantotype.webmanifest` - the webapp manifest file
 - `cantotype.js` - the main program module
-- `cantotype_load.js` - the data loading module
 - `cantotype_config.js` - the generated configuration script
-- `cantotype_ui.js` - the presentation tier module
+- `cantotype_load.js` - the data loading module
 - `cantotype_style.css` - the CSS stylesheet
+- `cantotyep_sw.js` - the service worker module
+- `cantotype_ui.js` - the presentation tier module
 - `pako_inflate.js` - the Pako GZip decompressor
 
 All of these files must have the exact same names listed above (case sensitive), except that the main `cantotype.html` page can be renamed anything you want, including using it as the index page for the server directory.
+
+You must also copy all the icons within the `icons` folder of this project to the program directory or a subdirectory of it.  The web manifest will give the relative URL to these icons.  You do not need the README file from the `icons` folder, just the actual icons.
 
 As described earlier, the `cantotype_config.js` file within this directory will tell Cantotype where it can find the data directory.
 
 You may want to verify that the HTTP server understands the file extensions of all the files listed earlier in this section, as well as the file extension used for the generated data files.  Here is a list of MIME content types for each of the extensions, which is useful if you are creating a JSON website file for use with the Jacques HTTP server:
 
-     Extension |    MIME type
-    ===========+==================
-       .css    | text/css
-       .gz     | application/gzip
-       .html   | text/html
-       .js     | text/javascript
-       .woff   | font/woff
+      Extension   |         MIME type
+    ==============+===========================
+     .css         | text/css
+     .gz          | application/gzip
+     .html        | text/html
+     .js          | text/javascript
+     .png         | image/png
+     .webmanifest | application/manifest+json
+     .woff        | font/woff
 
-You do not have to use `.gz` extensions for the data files, especially if the server is giving you troubles with these.  You could also use the MIME type `application/octet-stream` for them.
+Since the web manifest is a JSON file, you can also give it an `application/json` MIME type if the MIME type given above is causing you trouble.
 
-__Important:__ The data files served to the client must arrive at the client still in GZip compressed form.  The client-side JavaScript will decompress them.  Do __not__ allow the HTTP server to transfer them with a `Content-Encoding` header indicating `gzip` compression, because in this case the client browser will decompress the files before passing them to JavaScript, which will then try to decompress them again.  Make sure they reach the JavaScript code still in a compressed state.
+__!!! CAUTION CAUTION CAUTION !!!__
+
+The GZip data files must be delivered to the client in compressed form.  Unfortunately, HTTP servers might try to be clever and serve `.gz` files with an HTTP `Content-Encoding` header indicating `gzip` compression.  This means that the browser will decompress the GZip data files before passing them to Cantotype.  And then Cantotype will try to decompress them again.  __This will not work!!__  If Cantotype is refusing to start because of troubles loading the database, and the browser web console has messages about decompression failing, this is probably what is happening.
+
+A quick fix for this is to change the extension of the compressed data files from `.gz` to something else, maybe something generic like `.dat`.  (You do _not_ need to do this for the WOFF fonts.)  If you can set a MIME type, setting it to `application/octet-stream` will not cause Cantotype any trouble and may prevent clever HTTP servers from trying to serve the data with a `Content-Encoding`.  Of course, if you are going to rename the data files, you will have to update the data file index and the configuration file with the new names.
+
+You can check what the server is serving by downloading one of the GZip data files directly by the URL.  Then rename it if necessary to have a `.gz` extension and try running `gzip` on it.  If `gzip` works successfully, then the server is correctly serving the compressed data.  If `gzip` complains, then the file is probably an uncompressed text file, and the server is using `Content-Encoding` headers which will __not__ work with Cantotype!
+
+## Running the program
 
 Provided that all the files are generated and assembled as described in this README, you just need to navigate to wherever you placed the main Cantotype HTML page and the webapp should start.  Since no server-side scripting is required, you may run Cantotype even if your HTTP server only allows static websites.
+
+You can also install Cantotype as a "Progressive Web App" (PWA).  Some browsers may present a pop-up offering to install Cantotype, or others may have an `Install` option in the browser menu somewhere.  This will allow you to use Cantotype as an offline app, even when no internet connection is available.  Make sure Cantotype has downloaded a copy of its data files before trying to use it offline, though.
+
+(As mentioned before, offline web app functionality will likely require the site to be served over HTTPS.)
